@@ -1,0 +1,59 @@
+name: akg
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: akg-postgres
+    environment:
+      POSTGRES_USER: ${PG_USER:-akg}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-akg_dev_password}
+      POSTGRES_DB: ${PG_DB:-akg}
+    ports:
+      # 55432 en el host para no chocar con un PostgreSQL local (mismo puerto que akg/config.py)
+      - "${PG_PORT:-55432}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-akg} -d ${PG_DB:-akg}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5
+    container_name: akg-neo4j
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:-neo4j_dev_password}"
+      NEO4J_server_memory_heap_max__size: "1G"
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: akg-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pg-data:
+  neo4j-data:
+  neo4j-logs:
+  redis-data:

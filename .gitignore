@@ -1,0 +1,28 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Entornos y secretos
+.env
+deploy/compose/.env
+
+# Node / frontend
+node_modules/
+dist/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# Datos locales de pruebas
+dev/*.json
+dev/*.log

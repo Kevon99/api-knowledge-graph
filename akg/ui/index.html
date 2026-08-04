@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>API Knowledge Graph — Explorer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">API Knowledge Graph</div>
+    <div class="topbar-actions">
+      <label>Workspace
+        <select id="ws-select"></select>
+      </label>
+      <button id="btn-new-ws">Nuevo</button>
+      <button id="btn-upload">Subir Burp</button>
+      <input type="file" id="file-input" accept=".json,.xml,.txt" hidden />
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section>
+        <h3>Resumen del grafo</h3>
+        <div id="summary" class="summary">—</div>
+      </section>
+      <section>
+        <h3>Vistas</h3>
+        <div class="views">
+          <button id="view-semantic" class="view-btn active">Conocimiento</button>
+          <button id="view-auth" class="view-btn">Auth Flow</button>
+          <button id="view-resources" class="view-btn">Recursos</button>
+          <button id="view-findings" class="view-btn">Findings</button>
+        </div>
+      </section>
+      <section>
+        <h3>Explorar nodos</h3>
+        <label>Label <input id="node-label" list="labels-list" placeholder="Endpoint, Host, ..."/></label>
+        <datalist id="labels-list"></datalist>
+        <div class="row">
+          <label>Límite
+            <input id="node-limit" type="number" min="10" max="500" value="80" style="width:64px" />
+          </label>
+        </div>
+        <button id="btn-query">Ejecutar</button>
+      </section>
+      <section>
+        <h3>Ajustar layout</h3>
+        <label>Separación
+          <input id="adj-spring" type="range" min="80" max="600" step="10" />
+          <span id="adj-spring-v" class="range-val"></span>
+        </label>
+        <label>Repulsión
+          <input id="adj-repulsion" type="range" min="4000" max="80000" step="1000" />
+          <span id="adj-repulsion-v" class="range-val"></span>
+        </label>
+        <label>Evitar solape
+          <input id="adj-overlap" type="range" min="0" max="100" step="5" />
+          <span id="adj-overlap-v" class="range-val"></span>
+        </label>
+        <label>Tamaño nodo
+          <input id="adj-size" type="range" min="8" max="40" step="1" />
+          <span id="adj-size-v" class="range-val"></span>
+        </label>
+        <label>Letra
+          <input id="adj-font" type="range" min="8" max="18" step="1" />
+          <span id="adj-font-v" class="range-val"></span>
+        </label>
+        <div class="row">
+          <button id="layout-reset">Restablecer</button>
+        </div>
+      </section>
+      <section id="log-section">
+        <h3>Actividad</h3>
+        <div id="log" class="log"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div id="graph-panel" class="panel">
+        <div class="graph-legend">
+          <span><i class="dot dot-token"></i> token</span>
+          <span><i class="dot dot-cookie"></i> cookie</span>
+          <span><i class="dot dot-public"></i> público</span>
+        </div>
+        <div id="graph"></div>
+      </div>
+      <div id="detail" class="panel detail hidden">
+        <div class="detail-head">
+          <h3 id="detail-title">Detalle</h3>
+          <button id="detail-close">&times;</button>
+        </div>
+        <pre id="detail-body"></pre>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script type="module" src="app.js?v=20"></script>
+</body>
+</html>

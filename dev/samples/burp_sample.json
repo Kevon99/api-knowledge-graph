@@ -1,0 +1,41 @@
+[
+  {
+    "host": "example.com",
+    "method": "POST",
+    "url": "https://example.com/api/v1/users",
+    "time": 1736000000000,
+    "request": "POST /api/v1/users HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\nCookie: session=abc123; theme=dark\r\n\r\n{\"name\":\"alice\",\"email\":\"alice@example.com\"}",
+    "response": "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nSet-Cookie: session=newtoken; Path=/\r\n\r\n{\"id\":42,\"created\":true}"
+  },
+  {
+    "host": "example.com",
+    "method": "GET",
+    "url": "https://example.com/api/v1/users/42",
+    "time": 1730000001100,
+    "request": {
+      "text": "GET /api/v1/users/42 HTTP/1.1\r\nHost: example.com\r\nAccept: application/json\r\nCookie: session=abc123\r\n\r\n"
+    },
+    "response": {
+      "text": "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"id\":42,\"name\":\"alice\"}"
+    }
+  },
+  {
+    "host": "admin.example.com",
+    "method": "GET",
+    "url": "https://admin.example.com/api/config",
+    "time": 1730000002200,
+    "request": {
+      "raw": "R0VUIC9hcGkvY29uZmlnIEhUVFAvMS4xDQpIb3N0OiBhZG1pbi5leGFtcGxlLmNvbQ0KDUVJDQpBdXRob3JpemF0aW9uOiBCZWFyZXIgYWJjMTIzDQoNCg=="
+    },
+    "response": {
+      "raw": "SFRUUC8zLjAgMjAwIE9LDQpDb250ZW50LVR5cGU6IGFwcGxpSC9x9hvcw4KwiwDUG9ndWRecmUgY29udGVwdC10exMTQ3FqDQoNCntdNDYwNDgwLXCwZXM4ll9gZgD1ODQ4mQ0pMzA0MDY2MTQsW3RnZW9yZ4100VIDQvOYSpD9Y2085zMzk0MzY0KQ=="
+    }
+  },
+  {
+    "host": "files.example.com",
+    "method": "GET",
+    "url": "https://files.example.com/download/report.pdf",
+    "time": 1730000003300,
+    "request": "u GET /download/report.pdf HTTP/1.1\r\nHost: files.example.com\r\n\r\n"
+  }
+]
