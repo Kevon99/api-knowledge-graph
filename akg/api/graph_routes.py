@@ -33,6 +33,54 @@ def graph_query(payload: GraphQuery) -> list[dict[str, Any]]:
     return graph_repo.run_read(payload.cypher, payload.params)
 
 
+@router.get("/suggestions", summary="Sugerencias de hosts y endpoints para el buscador")
+def graph_suggestions(q: str = "", limit: int = 25) -> dict[str, Any]:
+    q = (q or "").strip()
+    items: list[str] = []
+    if q:
+        hosts = graph_repo.run_read(
+            "MATCH (h:Host) WHERE toLower(h.name) CONTAINS toLower($q) "
+            "RETURN h.name AS v ORDER BY h.name LIMIT $limit",
+            {"q": q, "limit": limit},
+        )
+        items += [r["v"] for r in hosts]
+        eps = graph_repo.run_read(
+            "MATCH (e:Endpoint) WHERE toLower(e.host) CONTAINS toLower($q) "
+            "OR toLower(e.pattern) CONTAINS toLower($q) "
+            "RETURN e.method + ' ' + coalesce(e.host, '') + e.pattern AS v "
+            "ORDER BY v LIMIT $limit",
+            {"q": q, "limit": limit},
+        )
+        items += [r["v"] for r in eps]
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in items:
+        v = v.strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return {"suggestions": out[:limit]}
+
+
+@router.get("/filter", summary="Grafo correlacionado con un subdominio o endpoint")
+def graph_filter(q: str = "", limit: int = 200) -> list[dict[str, Any]]:
+    q = (q or "").strip()
+    if not q:
+        raise HTTPException(status_code=422, detail="falta el parametro q")
+    limit = max(10, min(1000, int(limit)))
+    base = (
+        "MATCH (a) WHERE (a:Host AND toLower(a.name) CONTAINS toLower($q)) "
+        "OR (a:Endpoint AND (toLower(a.host) CONTAINS toLower($q) "
+        "OR toLower(a.pattern) CONTAINS toLower($q))) "
+        "WITH a LIMIT $seedLimit "
+        "OPTIONAL MATCH (a)-[r]-(b) WHERE NOT b:Exchange "
+        "AND type(r) <> 'SENDS' AND type(r) <> 'RECEIVES' "
+        "RETURN a, r, b, properties(r) AS rprops, labels(a) AS alabels, labels(b) AS blabels "
+        "LIMIT $limit"
+    )
+    return graph_repo.run_read(base, {"q": q, "limit": limit, "seedLimit": min(100, limit)})
+
+
 def _node(view: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": f"{view.get('method', '')}:{view.get('pattern', '')}:{view.get('host', '')}",

@@ -115,6 +115,65 @@ button:hover { border-color: var(--accent); color: var(--accent-hi); }
 .dot-token { background: #4f8cff; border: 1px solid #1c5cb8; }
 .dot-cookie { background: #ffc857; border: 1px solid #b8871c; }
 .dot-public { background: #55a868; border: 1px solid #2c6e3d; }
+.dot-all { background: linear-gradient(90deg,#4f8cff,#ffc857,#55a868); border: 1px solid #666; }
+
+.legend-group { position: relative; }
+.legend-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.legend-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.legend-btn .caret { font-size: 9px; opacity: 0.7; }
+.legend-drop {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: rgba(13,17,24,0.97);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+.legend-group.open .legend-drop { display: block; }
+.legend-drop .ld-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.legend-drop .ld-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.legend-drop .ld-item:hover { background: rgba(79,140,255,0.16); }
+.legend-drop .ld-empty { padding: 6px; color: var(--text-dim); }
 .detail pre {
   font-size: 12px;
   white-space: pre-wrap;
@@ -215,6 +274,23 @@ pre.dbg.json { color: var(--text); }
 .finding-meta { font-size: 11px; margin-top: 3px; }
 .finding.empty { border-style: dashed; cursor: default; color: var(--text-dim); }
 .muted { color: var(--text-dim); font-size: 11px; }
+
+/* detalle de finding */
+.finding-detail { display: flex; flex-direction: column; gap: 14px; }
+.fd-head { display: flex; gap: 10px; align-items: flex-start; }
+.fd-head .sev { font-size: 12px; padding: 3px 8px; border-radius: 4px; background: var(--panel-1); }
+.fd-title { margin: 0; font-size: 14px; line-height: 1.3; }
+.fd-meta { margin-top: 2px; }
+.fd-sec h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent-hi); }
+.fd-desc { margin: 0; font-size: 12px; color: var(--text); }
+.fd-hint { margin: 0 0 8px; font-style: italic; }
+.fd-dl { display: grid; grid-template-columns: minmax(90px, auto) 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
+.fd-dl dt { color: var(--text-dim); word-break: break-all; }
+.fd-dl dd { margin: 0; color: var(--text); word-break: break-all; }
+.fd-exchanges { margin: 0 0 6px; }
+.fd-list { margin: 0 0 6px; padding-left: 18px; font-size: 12px; color: var(--text); }
+.fd-list li { margin-bottom: 2px; }
+.finding-detail .req-view { margin-top: 4px; }
 
 section + section { margin-top: 8px; }
 #node-label { width: 100%; margin-bottom: 8px; }

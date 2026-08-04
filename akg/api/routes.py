@@ -375,12 +375,19 @@ def get_alert(alert_id: uuid.UUID, repo: EvidenceRepository = Depends(get_db)) -
     fields = evidence.get("fields") or {}
     pattern = fields.get("pattern")
     method = fields.get("method")
+    out.host = fields.get("host")
     if pattern and method:
         out.exchange_ids = repo.resolve_exchange_ids(pattern, method, fields.get("host"))[:20]
         out.node_keys = [
             f"Endpoint:{method}:{pattern}",
             *([f"Host:{fields.get('host')}"] if fields.get("host") else []),
         ]
+    if not out.host and out.exchange_ids:
+        try:
+            exchange, *_ = repo.get_exchange(uuid.UUID(out.exchange_ids[0]))
+            out.host = exchange.host
+        except (KeyError, ValueError):  # pragma: no cover - defensivo
+            pass
     return out
 
 

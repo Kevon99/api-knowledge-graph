@@ -180,6 +180,89 @@ async function highlightAuthEndpoints(nodes) {
   } catch (_) { /* sin marcado */ }
 }
 
+// ── Leyenda clickeable: token / cookie / public / all ───────────────────
+let _legendCache = null;
+async function loadLegendData() {
+  if (_legendCache) return _legendCache;
+  const { ok, body } = await api("/graph/auth-endpoints");
+  if (!ok || !body?.endpoints) return { token: [], cookie: [], public: [] };
+  const idx = { token: [], cookie: [], public: [] };
+  const hostSeen = { token: new Set(), cookie: new Set(), public: new Set() };
+  body.endpoints.forEach((e) => {
+    const s = idx[e.signal] || idx.public;
+    const h = e.host || "";
+    // endpoint: "GET host/pattern"
+    const epLabel = `${e.method} ${h}${e.pattern}`;
+    if (!s.some((x) => x.v === epLabel)) s.push({ kind: "endpoint", v: epLabel, q: epLabel });
+    // subdominio unico por signal
+    if (h && !hostSeen[e.signal].has(h)) {
+      hostSeen[e.signal].add(h);
+      s.push({ kind: "host", v: h, q: h });
+    }
+  });
+  _legendCache = idx;
+  return idx;
+}
+
+function renderLegendDropdowns(data) {
+  document.querySelectorAll("#legend .legend-group").forEach((group) => {
+    const signal = group.dataset.signal;
+    const drop = group.querySelector(".legend-drop");
+    if (signal === "all") { // boton directo, sin lista
+      drop.innerHTML = "";
+      return;
+    }
+    const items = data[signal] || [];
+    const hosts = items.filter((i) => i.kind === "host");
+    const eps = items.filter((i) => i.kind === "endpoint");
+    const sec = (title, list) =>
+      list.length
+        ? `<div class="ld-head">${title} (${list.length})</div>` +
+          list.map((i) => `<button class="ld-item" data-q="${escapeHtml(i.q)}">${escapeHtml(i.v)}</button>`).join("")
+        : `<div class="ld-head">${title}</div><div class="ld-empty">sin coincidencias</div>`;
+    drop.innerHTML = sec("subdominios", hosts) + sec("endpoints", eps);
+  });
+}
+
+async function buildLegend() {
+  const data = await loadLegendData();
+  renderLegendDropdowns(data);
+}
+
+function applySignalFilter(q) {
+  $("#node-label").value = q;
+  runQuery();
+}
+
+function closeLegend() {
+  document.querySelectorAll("#legend .legend-group.open").forEach((g) => g.classList.remove("open"));
+}
+
+function wireLegend() {
+  $("#legend").addEventListener("click", async (e) => {
+    const itemBtn = e.target.closest(".ld-item");
+    if (itemBtn) { // click en un subdominio o endpoint de la lista
+      closeLegend();
+      applySignalFilter(itemBtn.dataset.q);
+      return;
+    }
+    const btn = e.target.closest(".legend-btn");
+    if (!btn) return;
+    const group = btn.closest(".legend-group");
+    const signal = group.dataset.signal;
+    if (signal === "all") { // grafo completo sin filtros
+      closeLegend();
+      applySignalFilter("");
+      return;
+    }
+    // toggle dropdown
+    const wasOpen = group.classList.contains("open");
+    closeLegend();
+    if (!wasOpen) group.classList.add("open");
+  });
+  buildLegend();
+}
+
 function renderGraph(nodes, edges, cypherType) {
   if (network) { network.destroy(); network = null; }
   graphEl.innerHTML = "";
@@ -330,8 +413,14 @@ async function loadRawRequest(exchangeId, btn) {
 
 // ── Panel de request: JSON coloreado, colapsable y boton cURL ─────────────
 function renderRawRequestDetail(d) {
-  const raw = d.raw_request || "";
   $("#detail-title").textContent = `Request · ${d.method} ${d.host}`;
+  $detailBody.innerHTML = "";
+  $detailBody.appendChild(buildRequestBlock(d, { raw: d.raw_request || "", showCurl: true }));
+  $detail.classList.remove("hidden");
+}
+
+function buildRequestBlock(d, opts = {}) {
+  const raw = opts.raw ?? d.raw_request ?? "";
   const container = document.createElement("div");
   container.className = "req-view";
 
@@ -365,15 +454,14 @@ function renderRawRequestDetail(d) {
     container.appendChild(wrap);
   }
 
-  const curlBtn = document.createElement("button");
-  curlBtn.className = "req-btn curl";
-  curlBtn.textContent = "Copiar como cURL";
-  curlBtn.onclick = () => copyCurl(d);
-  container.appendChild(curlBtn);
-
-  $detailBody.innerHTML = "";
-  $detailBody.appendChild(container);
-  $detail.classList.remove("hidden");
+  if (opts.showCurl) {
+    const curlBtn = document.createElement("button");
+    curlBtn.className = "req-btn curl";
+    curlBtn.textContent = "Copiar como cURL";
+    curlBtn.onclick = () => copyCurl(opts.curlSource || d);
+    container.appendChild(curlBtn);
+  }
+  return container;
 }
 
 function highlightJson(str) {
@@ -531,26 +619,162 @@ async function showFindingDetail(alertId) {
   if (!ok) { log("no se pudo abrir la alerta", "err"); return; }
   const ev = body.evidence || {};
   const fields = ev.fields || {};
-  const lines = [
-    `# ${body.title}`,
-    `regla: ${body.rule_id} · severidad: ${body.severity} · estado: ${body.status}`,
-    `confianza: ${body.confidence ?? "—"}`,
-    "",
-    "## Detalle",
-    body.description || "—",
-    "",
-    "## Evidencia",
-    ...Object.entries(fields).map(([k, v]) => `${k}: ${escapeHtml(String(v))}`),
-    "",
-    `## Exchanges implicados (${body.exchange_ids.length})`,
-    ...(body.exchange_ids.map((id) => id).join("\n") || "sin exchanges resueltos"),
-    "",
-    "## Nodos",
-    (body.node_keys || []).join("\n") || "—",
-  ].join("\n");
+
+  // request original real (primer exchange implicado)
+  let original = null;
+  if (body.exchange_ids && body.exchange_ids.length) {
+    const r = await api(`/exchanges/${body.exchange_ids[0]}`);
+    if (r.ok) original = r.body;
+  }
+  const testReq = original ? buildTestRequest(original, fields, body.rule_id) : null;
+
+  const el = document.createElement("div");
+  el.className = "finding-detail";
+
+  el.innerHTML = `
+    <div class="fd-head">
+      <span class="sev sev-${body.severity}">${body.severity}</span>
+      <div>
+        <h3 class="fd-title">${escapeHtml(body.title)}</h3>
+        <div class="fd-meta muted">${escapeHtml(body.rule_id)} · ${body.status} · conf ${body.confidence ?? "—"}</div>
+      </div>
+    </div>
+
+    <section class="fd-sec">
+      <h4>Descripción</h4>
+      <p class="fd-desc">${escapeHtml(body.description || "—")}</p>
+      ${buildImpactHint(body.rule_id)}
+    </section>
+
+    <section class="fd-sec">
+      <h4>Detalles</h4>
+      <dl class="fd-dl">
+        ${Object.entries(fields).map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(String(v))}</dd>`).join("")}
+        ${body.host ? `<dt>subdominio</dt><dd>${escapeHtml(body.host)}</dd>` : ""}
+      </dl>
+    </section>
+
+    <section class="fd-sec">
+      <h4>Evidencia</h4>
+      <p class="fd-exchanges muted">${(body.exchange_ids || []).length} exchange(s) implicado(s)</p>
+      <ul class="fd-list">
+        ${(body.node_keys || []).map((k) => `<li>${escapeHtml(k)}</li>`).join("")}
+      </ul>
+      <details class="collapsible">
+        <summary>IDs de exchanges</summary>
+        <pre class="dbg">${escapeHtml((body.exchange_ids || []).join("\n") || "—")}</pre>
+      </details>
+    </section>
+  `;
+
+  if (original) {
+    const origSec = document.createElement("section");
+    origSec.className = "fd-sec";
+    origSec.innerHTML = `<h4>Ejemplo de petición original</h4>`;
+    origSec.appendChild(buildRequestBlock(original, { showCurl: true }));
+    el.appendChild(origSec);
+  }
+
+  if (testReq) {
+    const testSec = document.createElement("section");
+    testSec.className = "fd-sec";
+    testSec.innerHTML = `
+      <h4>Ejemplo de petición para testing</h4>
+      <p class="fd-hint muted">${escapeHtml(testReq.hint)}</p>`;
+    testSec.appendChild(buildRequestBlock(testReq.detail, { showCurl: true }));
+    el.appendChild(testSec);
+  }
+
   $("#detail-title").textContent = `Finding ${body.severity}`;
-  $("#detail-body").textContent = lines;
+  $detailBody.innerHTML = "";
+  $detailBody.appendChild(el);
   $("#detail").classList.remove("hidden");
+}
+
+// ── Helpers para el detalle del finding ──────────────────────────────────────
+function buildImpactHint(ruleId) {
+  const hints = {
+    "R-IDOR-001":
+      "<p class='fd-hint'>Impacto: acceso cruzado a objetos de otros usuarios alterando el ID en el path.</p>",
+    "R-IDOR-004":
+      "<p class='fd-hint'>Impacto: lectura de recursos por ID sin autenticación/autorización observada.</p>",
+    "R-AUTH-001":
+      "<p class='fd-hint'>Impacto: recurso accesible sin credenciales; confirmar si debería exigir auth.</p>",
+    "R-INFRA-001":
+      "<p class='fd-hint'>Impacto: tráfico en claro susceptible a intercepción/Man-in-the-Middle.</p>",
+    "R-AUTH-003":
+      "<p class='fd-hint'>Impacto: credenciales/secrets expuestos en query string (logs, referers, proxies).</p>",
+  };
+  return hints[ruleId] || "";
+}
+
+function buildTestRequest(original, fields, ruleId) {
+  const method = original.method || "GET";
+  const reqHeaders = (original.headers || []).filter((h) => h.direction === "request");
+  const reqCookies = (original.cookies || []).filter((c) => c.direction === "request");
+  const reqBody = (original.bodies || []).find((b) => b.direction === "request");
+
+  let target = original.path || "/";
+  let hint = "Reenviar la petición y comparar la respuesta con la original.";
+
+  if (/R-IDOR/.test(ruleId)) {
+    // muta el valor del id en el path para probar acceso cruzado
+    target = mutatePathId(target);
+    hint =
+      "Sustituye el ID del recurso por otro valor (p.ej. 1 → 9999) y comprueba " +
+      "si responde con datos ajenos sin autorización (status 200 vs 403/404).";
+  } else if (ruleId === "R-AUTH-001") {
+    hint =
+      "Envía la petición sin cookies ni token y verifica si el endpoint devuelve " +
+      "datos (200) en lugar de exigir autenticación (401/403).";
+  } else if (ruleId === "R-INFRA-001") {
+    hint =
+      "Confirmar el servicio en HTTP plano y verificar si redirige a HTTPS o expone " +
+      "datos en claro sobre el cable.";
+  }
+
+  const detail = {
+    method,
+    host: original.host,
+    scheme: original.scheme || "https",
+    path: target,
+    headers: original.headers,
+    cookies: original.cookies,
+    bodies: original.bodies,
+    raw_request: rewriteRawRequest(original.raw_request, method, target, ruleId),
+  };
+  return { detail, hint };
+}
+
+function mutatePathId(path) {
+  // reemplaza el último segmento que parezca un id (uuid o entero) por otro valor
+  const segs = path.split("/");
+  for (let i = segs.length - 1; i > 0; i--) {
+    const s = segs[i];
+    if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(s)) {
+      segs[i] = "00000000-0000-4000-8000-000000000001";
+      break;
+    }
+    if (/^\d+$/.test(s)) {
+      segs[i] = "9999";
+      break;
+    }
+  }
+  return segs.join("/");
+}
+
+function rewriteRawRequest(raw, method, target, ruleId) {
+  const lines = (raw || "").split("\r\n");
+  if (!lines.length) return `${method} ${target} HTTP/1.1\r\n`;
+  lines[0] = `${method} ${target} HTTP/1.1`;
+  if (ruleId === "R-AUTH-001") {
+    const kept = lines.filter(
+      (l) => !/^cookie:/i.test(l) && !/^authorization:/i.test(l)
+    );
+    kept.splice(1, 0, "# testing: sin cookies ni Authorization");
+    return kept.join("\r\n");
+  }
+  return lines.join("\r\n");
 }
 
 function escapeHtml(s) {
@@ -582,22 +806,31 @@ function buildGraphFromViews(body, kind) {
 
 async function runQuery() {
   nodesById.clear();
-  const label = $("#node-label").value.trim().replace(/[^a-zA-Z0-9_]/g, "");
+  const raw = $("#node-label").value.trim();
   const limit = $("#node-limit") ? $("#node-limit").value : 80;
   // Grafo semantico por defecto: hosts, endpoints, tokens, cookies, sesiones y flujos.
   // Se excluyen Exchange (evidencia) y el ruido de cookies por exchange para que la
   // vista muestre conocimiento navegable, no trafico crudo.
-  const cypher = label
-    ? `MATCH (n:\`${label}\`)-[rel*0..1]->(m) RETURN n, rel, m, labels(n) AS nlabels, labels(m) AS mlabels LIMIT ${Number(limit) || 80}`
-    : `MATCH (a)-[r]->(b) WHERE NOT a:Exchange AND NOT b:Exchange ` +
+  let body;
+  let mode = "semantico";
+  if (raw) {
+    // modo filtro: nodos correlacionados con el subdominio/endpoint escrito
+    const { ok, status, body: fb } = await api(`/graph/filter?q=${encodeURIComponent(raw)}&limit=${Number(limit) || 80}`);
+    if (!ok) { log(`filtro rechazado: ${fb?.detail || status}`, "err"); return; }
+    body = fb;
+    mode = `filtro: ${raw}`;
+  } else {
+    const cypher = `MATCH (a)-[r]->(b) WHERE NOT a:Exchange AND NOT b:Exchange ` +
       `AND type(r) <> 'SENDS' AND type(r) <> 'RECEIVES' ` +
       `RETURN a, r, b, properties(r) AS rprops, labels(a) AS alabels, labels(b) AS blabels LIMIT ${Number(limit) || 80}`;
-  const { ok, body } = await api("/graph/query", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cypher }),
-  });
-  if (!ok) { log(`consulta rechazada: ${body.detail}`, "err"); return; }
+    const { ok, status, body: b } = await api("/graph/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cypher }),
+    });
+    if (!ok) { log(`consulta rechazada: ${b?.detail || status}`, "err"); return; }
+    body = b;
+  }
 
   const seen = new Map();
   const nodes = [];
@@ -645,8 +878,27 @@ async function runQuery() {
     });
   }
   nodes.forEach((n) => nodesById.set(n.id, n));
-  renderGraph(nodes, edges, label || "semantico");
+  renderGraph(nodes, edges, mode);
   highlightAuthEndpoints(nodes); // pinta en azul los endpoints que usan auth
+}
+
+// ── Autocompletado del buscador (sugerencias de hosts/endpoints) ─────────
+let suggestTimer = null;
+$("#node-label").addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(loadSuggestions, 180);
+});
+
+async function loadSuggestions() {
+  const dl = $("#labels-list");
+  if (!dl) return;
+  const q = $("#node-label").value.trim();
+  if (!q) { dl.innerHTML = ""; return; }
+  const { ok, body } = await api(`/graph/suggestions?q=${encodeURIComponent(q)}`);
+  if (!ok || !body?.suggestions) return;
+  dl.innerHTML = body.suggestions
+    .map((s) => `<option value="${escapeHtml(s)}"></option>`)
+    .join("");
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────
@@ -655,6 +907,11 @@ $("#btn-upload").onclick = () => $("#file-input").click();
 $("#file-input").onchange = (e) => e.target.files[0] && uploadFile(e.target.files[0]);
 $("#btn-query").onclick = runQuery;
 $("#node-label").addEventListener("keydown", (e) => e.key === "Enter" && runQuery());
+$("#btn-clear-filter").addEventListener("click", () => {
+  $("#node-label").value = "";
+  $("#labels-list").innerHTML = "";
+  runQuery();
+});
 $("#ws-select").addEventListener("change", () => { loadSummary(); runQuery(); });
 $("#detail-close").onclick = closeDetail;
 
@@ -711,3 +968,5 @@ Object.entries(VIEWS).forEach(([id, fn]) => {
 (async () => {
   await loadWorkspaces();
 })();
+
+wireLegend();

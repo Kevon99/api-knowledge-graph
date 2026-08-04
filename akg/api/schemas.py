@@ -259,6 +259,7 @@ class AlertDetailOut(AlertOut):
     context_subgraph: dict | None = None
     exchange_ids: list[str] = []
     node_keys: list[str] = []
+    host: str | None = None
 
 
 class AlertStatusUpdate(BaseModel):

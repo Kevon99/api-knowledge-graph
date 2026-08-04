@@ -36,12 +36,15 @@
       </section>
       <section>
         <h3>Explorar nodos</h3>
-        <label>Label <input id="node-label" list="labels-list" placeholder="Endpoint, Host, ..."/></label>
+        <label>Buscar
+          <input id="node-label" list="labels-list" placeholder="app, api, *.hubspot.com…" />
+        </label>
         <datalist id="labels-list"></datalist>
         <div class="row">
           <label>Límite
             <input id="node-limit" type="number" min="10" max="500" value="80" style="width:64px" />
           </label>
+          <button id="btn-clear-filter" title="Limpiar filtro">✕</button>
         </div>
         <button id="btn-query">Ejecutar</button>
       </section>
@@ -79,10 +82,23 @@
 
     <main class="main">
       <div id="graph-panel" class="panel">
-        <div class="graph-legend">
-          <span><i class="dot dot-token"></i> token</span>
-          <span><i class="dot dot-cookie"></i> cookie</span>
-          <span><i class="dot dot-public"></i> público</span>
+        <div class="graph-legend" id="legend">
+          <div class="legend-group" data-signal="token">
+            <button class="legend-btn"><i class="dot dot-token"></i> token <span class="caret">▾</span></button>
+            <div class="legend-drop"></div>
+          </div>
+          <div class="legend-group" data-signal="cookie">
+            <button class="legend-btn"><i class="dot dot-cookie"></i> cookie <span class="caret">▾</span></button>
+            <div class="legend-drop"></div>
+          </div>
+          <div class="legend-group" data-signal="public">
+            <button class="legend-btn"><i class="dot dot-public"></i> público <span class="caret">▾</span></button>
+            <div class="legend-drop"></div>
+          </div>
+          <div class="legend-group" data-signal="all">
+            <button class="legend-btn"><i class="dot dot-all"></i> all</button>
+            <div class="legend-drop"></div>
+          </div>
         </div>
         <div id="graph"></div>
       </div>
@@ -97,6 +113,6 @@
   </div>
 
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-  <script type="module" src="app.js?v=20"></script>
+  <script type="module" src="app.js?v=23"></script>
 </body>
 </html>
