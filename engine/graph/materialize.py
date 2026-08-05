@@ -45,6 +45,7 @@ def _upsert_endpoint(
     pattern: str,
     scheme: str,
     port: int,
+    project: str,
     import_id: uuid.UUID,
 ) -> None:
     repo.upsert_node(
@@ -55,18 +56,18 @@ def _upsert_endpoint(
             "host": host,
             "scheme": scheme,
             "port": port,
+            "project": project,
         },
         key_properties=["method", "pattern", "host"],
         import_id=import_id,
     )
-    # relacion semantica: el host sirve el endpoint (no via Exchange)
     repo.upsert_relationship(
         "Host",
         {"name": host},
         "Endpoint",
         {"method": method, "pattern": pattern, "host": host},
         "HOSTS",
-        rel_properties={"import_id": import_id},
+        rel_properties={"import_id": import_id, "project": project},
     )
 
 
@@ -109,6 +110,7 @@ def materialize_exchanges(
             pattern,
             ex.get("scheme", "https"),
             ex.get("port", 443),
+            project,
             import_id,
         )
         counts["endpoints"] += 1
@@ -119,7 +121,7 @@ def materialize_exchanges(
 
         # ── recursos derivados del template (V0.1-20/26) ──────────────────
         res_accepts, res_returns = _link_resources(
-            repo, ep_meta, pattern, method, request, response, import_id
+            repo, ep_meta, pattern, method, request, response, import_id, project
         )
         counts["resources"] += res_accepts[0] + res_returns[0]
         counts["accepts"] += res_accepts[1]
@@ -139,6 +141,7 @@ def materialize_exchanges(
                 "scheme": ex.get("scheme", "https"),
                 "port": ex.get("port", 443),
                 "timestamp": timestamp,
+                "project": project,
             },
             key_properties=["exchange_id"],
             import_id=import_id,
@@ -146,7 +149,7 @@ def materialize_exchanges(
         counts["exchanges"] += 1
 
         # ── relaciones Exchange-esde-hasta Host/Endpoint ───────────────
-        _link_exchange(repo, exchange_id, ex["host"], method, pattern, import_id)
+        _link_exchange(repo, exchange_id, ex["host"], method, pattern, import_id, project)
 
         # ── tokens de autorizacion ─────────────────────────────────────
         for h in ex.get("request", {}).get("headers", []):
@@ -155,7 +158,7 @@ def materialize_exchanges(
                 t_type, t_hash = _token_key(h["value"])
                 repo.upsert_node(
                     "Token",
-                    {"token_type": t_type, "value_hash": t_hash},
+                    {"token_type": t_type, "value_hash": t_hash, "project": project},
                     key_properties=["token_type", "value_hash"],
                     import_id=import_id,
                 )
@@ -166,16 +169,15 @@ def materialize_exchanges(
                     "Token",
                     {"token_type": t_type, "value_hash": t_hash},
                     "SENDS_TOKEN",
-                    rel_properties={"import_id": import_id, "confidence": "EVIDENCIA", "score": 1.0},
+                    rel_properties={"import_id": import_id, "confidence": "EVIDENCIA", "score": 1.0, "project": project},
                 )
-                # semantica: el endpoint consume el token que autoriza
                 repo.upsert_relationship(
                     "Endpoint",
                     ep_meta,
                     "Token",
                     {"token_type": t_type, "value_hash": t_hash},
                     "AUTHENTICATES_WITH",
-                    rel_properties={"import_id": import_id, "confidence": "EVIDENCIA", "score": 1.0},
+                    rel_properties={"import_id": import_id, "confidence": "EVIDENCIA", "score": 1.0, "project": project},
                 )
                 repo.upsert_relationship(
                     "Token",
@@ -183,16 +185,16 @@ def materialize_exchanges(
                     "Endpoint",
                     ep_meta,
                     "AUTHORIZES",
-                    rel_properties={"import_id": import_id, "confidence": "EVIDENCIA", "score": 1.0},
+                    rel_properties={"import_id": import_id, "confidence": "EVIDENCIA", "score": 1.0, "project": project},
                 )
 
         # ── cookies ────────────────────────────────────────────────────
         for c in ex.get("request", {}).get("cookies", []):
-            counts["cookies"] += _link_cookie(repo, c, exchange_id, "SENDS", import_id)
-            _link_endpoint_cookie(repo, ep_meta, c, "CONSUMES", import_id)
+            counts["cookies"] += _link_cookie(repo, c, exchange_id, "SENDS", import_id, project)
+            _link_endpoint_cookie(repo, ep_meta, c, "CONSUMES", import_id, project)
         for c in ex.get("response", {}).get("cookies", []):
-            counts["cookies"] += _link_cookie(repo, c, exchange_id, "RECEIVES", import_id)
-            _link_endpoint_cookie(repo, ep_meta, c, "EMITS", import_id)
+            counts["cookies"] += _link_cookie(repo, c, exchange_id, "RECEIVES", import_id, project)
+            _link_endpoint_cookie(repo, ep_meta, c, "EMITS", import_id, project)
 
     return counts
 
@@ -245,6 +247,7 @@ def _link_resources(
     request: dict[str, Any],
     response: dict[str, Any],
     import_id: uuid.UUID,
+    project: str,
 ) -> tuple[tuple[int, int], tuple[int, int]]:
     """Crea nodos Resource y relaciones ACCEPTS/RETURNS desde el endpoint.
 
@@ -256,7 +259,7 @@ def _link_resources(
     for name in names:
         repo.upsert_node(
             "Resource",
-            {"name": name},
+            {"name": name, "project": project},
             key_properties=["name"],
             import_id=import_id,
         )
@@ -278,6 +281,7 @@ def _link_resources(
                     "import_id": import_id,
                     "confidence": "INFERENCIA",
                     "score": 0.7,
+                    "project": project,
                 },
             )
             accepts += 1
@@ -294,6 +298,7 @@ def _link_resources(
                     "import_id": import_id,
                     "confidence": "INFERENCIA",
                     "score": 0.7,
+                    "project": project,
                 },
             )
             returns += 1
@@ -308,6 +313,7 @@ def _link_exchange(
     method: str,
     pattern: str,
     import_id: uuid.UUID,
+    project: str,
 ) -> None:
     repo.upsert_relationship(
         "Exchange",
@@ -315,7 +321,7 @@ def _link_exchange(
         "Host",
         {"name": host},
         "HITS_HOST",
-        rel_properties={"import_id": import_id},
+        rel_properties={"import_id": import_id, "project": project},
     )
     repo.upsert_relationship(
         "Exchange",
@@ -323,17 +329,17 @@ def _link_exchange(
         "Endpoint",
         {"method": method, "pattern": pattern, "host": host},
         "CALLS",
-        rel_properties={"import_id": import_id},
+        rel_properties={"import_id": import_id, "project": project},
     )
 
 
 def _link_cookie(
-    repo: GraphRepository, c: dict[str, Any], exchange_id: str, rel_type: str, import_id: uuid.UUID
+    repo: GraphRepository, c: dict[str, Any], exchange_id: str, rel_type: str, import_id: uuid.UUID, project: str
 ) -> int:
     value_hash = c.get("value_hash") or hashlib.sha256((c.get("value") or "").encode()).hexdigest()
     repo.upsert_node(
         "Cookie",
-        {"name": c.get("name"), "value_hash": value_hash},
+        {"name": c.get("name"), "value_hash": value_hash, "project": project},
         key_properties=["name", "value_hash"],
         import_id=import_id,
     )
@@ -343,7 +349,7 @@ def _link_cookie(
         "Cookie",
         {"name": c.get("name"), "value_hash": value_hash},
         rel_type,
-        rel_properties={"import_id": import_id},
+        rel_properties={"import_id": import_id, "project": project},
     )
     return 1
 
@@ -354,6 +360,7 @@ def _link_endpoint_cookie(
     c: dict[str, Any],
     rel_type: str,
     import_id: uuid.UUID,
+    project: str,
 ) -> None:
     """Relacion semantica Endpoint -> Cookie (CONSUMES en request, EMITS en response)."""
     value_hash = c.get("value_hash") or hashlib.sha256((c.get("value") or "").encode()).hexdigest()
@@ -363,7 +370,7 @@ def _link_endpoint_cookie(
         "Cookie",
         {"name": c.get("name"), "value_hash": value_hash},
         rel_type,
-        rel_properties={"import_id": import_id},
+        rel_properties={"import_id": import_id, "project": project},
     )
 
 

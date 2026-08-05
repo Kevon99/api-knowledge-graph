@@ -73,6 +73,17 @@ def get_workspace(
     return WorkspaceOut.model_validate(ws)
 
 
+@router.delete(
+    "/workspaces/{workspace_id}", status_code=204, summary="Eliminar workspace y su grafo"
+)
+def delete_workspace(
+    workspace_id: uuid.UUID, repo: EvidenceRepository = Depends(get_db)
+) -> None:
+    deleted = repo.delete_workspace(workspace_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="workspace no encontrado")
+
+
 # ── Imports ─────────────────────────────────────────────────────────────────────
 
 

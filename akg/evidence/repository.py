@@ -67,6 +67,26 @@ class EvidenceRepository:
     def get_workspace(self, workspace_id: uuid.UUID) -> Workspace | None:
         return self._session.get(Workspace, workspace_id)
 
+    def delete_workspace(self, workspace_id: uuid.UUID) -> bool:
+        ws = self._session.get(Workspace, workspace_id)
+        if ws is None:
+            return False
+        # SQLAlchemy cascade elimina imports, stages, exchanges, headers, cookies,
+        # bodies, templates, values, occurrences, alerts, rule_runs
+        self._session.delete(ws)
+        self._session.commit()
+        # Limpieza Neo4j: borra todos los nodos y relaciones con este project
+        from engine.graph.repository import graph_repo
+        pid = str(workspace_id)
+        try:
+            graph_repo.run_write(
+                "MATCH (n) WHERE n.project = $project_id DETACH DELETE n",
+                {"project_id": pid},
+            )
+        except Exception:
+            pass
+        return True
+
     def list_exchanges(self, import_id: uuid.UUID | None = None) -> list[HttpExchange]:
         stmt = select(HttpExchange).order_by(HttpExchange.import_id, HttpExchange.order)
         if import_id is not None:

@@ -13,14 +13,17 @@
       <label>Workspace
         <select id="ws-select"></select>
       </label>
-      <button id="btn-new-ws">Nuevo</button>
-      <button id="btn-upload">Subir Burp</button>
+<button id="btn-new-ws">Nuevo</button>
+          <button id="btn-del-ws" style="color:#e74c3c" title="Eliminar workspace y todo su grafo">Eliminar</button>
+          <button id="btn-upload">Subir Burp</button>
       <input type="file" id="file-input" accept=".json,.xml,.txt" hidden />
     </div>
   </header>
 
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-resize"></div>
+      <div class="sidebar-inner">
       <section>
         <h3>Resumen del grafo</h3>
         <div id="summary" class="summary">—</div>
@@ -42,42 +45,75 @@
         <datalist id="labels-list"></datalist>
         <div class="row">
           <label>Límite
-            <input id="node-limit" type="number" min="10" max="500" value="80" style="width:64px" />
+            <input id="node-limit" type="number" min="10" max="800" value="500" style="width:64px" />
           </label>
           <button id="btn-clear-filter" title="Limpiar filtro">✕</button>
         </div>
         <button id="btn-query">Ejecutar</button>
       </section>
       <section>
+        <h3>Excluidos</h3>
+        <p class="block-hint">Hosts o endpoints que no se muestran en el grafo.</p>
+        <div class="block-add-row">
+          <input id="block-input" list="block-suggest" placeholder="api.example.com o GET /users/..." />
+          <datalist id="block-suggest"></datalist>
+          <button id="btn-block-add" title="Añadir a excluidos">+</button>
+        </div>
+        <div id="block-type-select" class="block-type-select">
+          <label class="bt-label" data-btype="host">Host <span class="bt-count" id="bt-count-host">0</span></label>
+          <label class="bt-label" data-btype="endpoint">Endpoint <span class="bt-count" id="bt-count-ep">0</span></label>
+        </div>
+        <div id="block-list" class="block-list"></div>
+        <details class="collapsible block-pick">
+          <summary>Excluir del grafo actual</summary>
+          <div id="block-pick-list" class="block-pick-list"></div>
+        </details>
+      </section>
+      <section>
         <h3>Ajustar layout</h3>
-        <label>Separación
+        <div class="layout-presets">
+          <button id="preset-dense" class="preset-btn" title="Vista ultra densa para grafos grandes, solo colores y formas">Denso</button>
+          <button id="preset-compact" class="preset-btn" title="Vista compacta — nodos pequeños, alta densidad">Compacto</button>
+          <button id="preset-balanced" class="preset-btn active" title="Vista balanceada — tamaño y espaciado medios">Balanceado</button>
+          <button id="preset-expanded" class="preset-btn" title="Vista expandida — nodos grandes, máxima separación">Expandido</button>
+        </div>
+        <label class="settings-label hidden-toggle">Tamaño nodo
+          <input id="adj-size" type="range" min="10" max="40" step="1" />
+          <span id="adj-size-v" class="range-val"></span>
+        </label>
+        <label class="settings-label hidden-toggle">Separación
           <input id="adj-spring" type="range" min="80" max="600" step="10" />
           <span id="adj-spring-v" class="range-val"></span>
         </label>
-        <label>Repulsión
-          <input id="adj-repulsion" type="range" min="4000" max="80000" step="1000" />
+        <label class="settings-label hidden-toggle">Repulsión
+          <input id="adj-repulsion" type="range" min="2000" max="40000" step="500" />
           <span id="adj-repulsion-v" class="range-val"></span>
         </label>
-        <label>Evitar solape
-          <input id="adj-overlap" type="range" min="0" max="100" step="5" />
-          <span id="adj-overlap-v" class="range-val"></span>
-        </label>
-        <label>Tamaño nodo
-          <input id="adj-size" type="range" min="8" max="40" step="1" />
-          <span id="adj-size-v" class="range-val"></span>
-        </label>
-        <label>Letra
-          <input id="adj-font" type="range" min="8" max="18" step="1" />
-          <span id="adj-font-v" class="range-val"></span>
-        </label>
+        <details class="collapsible advanced-sliders">
+          <summary>Ajustes avanzados</summary>
+          <label>Evitar solape
+            <input id="adj-overlap" type="range" min="0" max="100" step="5" />
+            <span id="adj-overlap-v" class="range-val"></span>
+          </label>
+          <label>Letra
+            <input id="adj-font" type="range" min="9" max="18" step="1" />
+            <span id="adj-font-v" class="range-val"></span>
+          </label>
+        </details>
         <div class="row">
           <button id="layout-reset">Restablecer</button>
+          <button id="btn-fit" title="Restablecer vista a todo el grafo" style="font-size:12px;">↔ Encuadrar</button>
         </div>
+      </section>
+      <section>
+        <h3>Tipos de nodo</h3>
+        <div id="node-type-filters" class="node-type-filters"></div>
       </section>
       <section id="log-section">
         <h3>Actividad</h3>
         <div id="log" class="log"></div>
       </section>
+      </div>
     </aside>
 
     <main class="main">
@@ -101,6 +137,7 @@
           </div>
         </div>
         <div id="graph"></div>
+        <div class="graph-hint" id="graph-hint">Scroll: zoom · Arrastrar: mover · Click nodo: detalle · F: encuadrar</div>
       </div>
       <div id="detail" class="panel detail hidden">
         <div class="detail-head">
@@ -112,7 +149,26 @@
     </main>
   </div>
 
-  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-  <script type="module" src="app.js?v=23"></script>
+  <script>
+window.__moduleErrors = [];
+window.__moduleLogs = [];
+window.addEventListener('error', function(e) {
+  window.__moduleErrors.push(e.message + ' @ ' + (e.filename||'') + ':' + (e.lineno||''));
+});
+(function() {
+  var _log = console.log;
+  var _err = console.error;
+  console.log = function() {
+    window.__moduleLogs.push('[LOG] ' + Array.from(arguments).join(' '));
+    _log.apply(console, arguments);
+  };
+  console.error = function() {
+    window.__moduleLogs.push('[ERR] ' + Array.from(arguments).join(' '));
+    _err.apply(console, arguments);
+  };
+})();
+</script>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script type="module" src="app.js?v=28"></script>
 </body>
 </html>

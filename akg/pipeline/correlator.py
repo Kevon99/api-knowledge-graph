@@ -114,6 +114,7 @@ def correlate_exchanges(
                     "import_id": import_id,
                     "confidence": "EVIDENCIA",
                     "score": 1.0,
+                    "project": project,
                 },
             )
             result["consumes"] += 1
@@ -137,6 +138,7 @@ def correlate_exchanges(
                     "import_id": import_id,
                     "confidence": "EVIDENCIA",
                     "score": 1.0,
+                    "project": project,
                 },
             )
             result["flows"] += 1
@@ -181,6 +183,7 @@ def _materialize_auth_flows(
                 "host": host,
                 "login_method": first_login.method.upper(),
                 "login_pattern": first_login.template,
+                "project": project,
             },
             key_properties=["flow_hash"],
             import_id=import_id,
@@ -199,7 +202,7 @@ def _materialize_auth_flows(
             "AuthFlow",
             {"flow_hash": flow_key},
             "STARTS_AUTH",
-            rel_properties={"import_id": import_id, "confidence": "INFERENCIA", "score": 0.8},
+            rel_properties={"import_id": import_id, "confidence": "INFERENCIA", "score": 0.8, "project": project},
         )
 
         # AuthFlow -> endpoints consumidos despues del login en el mismo host
@@ -210,7 +213,7 @@ def _materialize_auth_flows(
                 "Endpoint",
                 {"method": m.method.upper(), "pattern": m.template, "host": m.host},
                 "AUTHENTICATES",
-                rel_properties={"import_id": import_id, "confidence": "INFERENCIA", "score": 0.8},
+                rel_properties={"import_id": import_id, "confidence": "INFERENCIA", "score": 0.8, "project": project},
             )
             result.setdefault("auth_uses", 0)
             result["auth_uses"] += 1
