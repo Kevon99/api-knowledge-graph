@@ -42,10 +42,27 @@ async function loadSummary() {
 }
 
 // ---- Workspaces ────────────────────────────────────────────────────────
+function resetGraphView() {
+  $("#summary").innerHTML = "<div class='row'>sin workspaces</div>";
+  if (network) { network.destroy(); network = null; }
+  graphEl.innerHTML = "<div class='hint'>crea o selecciona un workspace</div>";
+  lastGraph = null;
+  nodesById.clear();
+  originalGraphData = null;
+  isolatedNodeId = null;
+  closeDetail();
+}
+
 async function loadWorkspaces() {
   const { ok, body } = await api("/workspaces");
   if (!ok) return;
   const sel = $("#ws-select");
+  if (!body.items || !body.items.length) {
+    sel.innerHTML = "";
+    sel.dataset.name = "default";
+    resetGraphView();
+    return;
+  }
   sel.innerHTML = body.items
     .map((w) => `<option value="${w.id}">${w.name}</option>`)
     .join("");
@@ -70,10 +87,21 @@ async function deleteWorkspace() {
   const ws = $("#ws-select");
   const id = ws.value;
   const name = ws.options[ws.selectedIndex]?.text || id;
-  if (!id) return;
+  if (!id) {
+    log("no hay workspace para eliminar", "err");
+    return;
+  }
   if (!confirm(`¿Eliminar el workspace "${name}" y todo su contenido?`)) return;
-  const { ok } = await api(`/workspaces/${encodeURIComponent(id)}`, { method: "DELETE" });
-  log(ok ? `workspace "${name}" eliminado` : "error al eliminar", ok ? "ok" : "err");
+  const { ok, status, body } = await api(
+    `/workspaces/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+  if (!ok) {
+    const msg = body?.error?.message || body?.detail || status;
+    log(`error al eliminar: ${msg}`, "err");
+    return;
+  }
+  log(`workspace "${name}" eliminado`, "ok");
   await loadWorkspaces();
 }
 
@@ -121,6 +149,7 @@ const NODE_COLORS = {
   Flow: { bg: "#e67e22", border: "#c06514", icon: "🔀" },
   AuthFlow: { bg: "#ff6b3d", border: "#cc5028", icon: "🔐" },
   Exchange: { bg: "#7f8c8d", border: "#5d6d6d", icon: "📨" },
+  Header: { bg: "#e84393", border: "#a02963", icon: "🏷" },
 };
 
 const DEFAULT_BG = "#95a5a6";
@@ -137,6 +166,7 @@ const NODE_SHAPES = {
   Flow: "star",
   AuthFlow: "star",
   Exchange: "dot",
+  Header: "box",
 };
 
 // ── Ajustes de layout (persistidos en localStorage) ─────────────────────
@@ -166,6 +196,7 @@ function saveLayout() {
 let NODE_TYPES_VISIBLE = {
   Host: true, Endpoint: true, Token: true, Cookie: true,
   Session: true, Resource: true, Flow: true, AuthFlow: true, Exchange: false,
+  Header: true,
 };
 
 function applyNodeTypeFilter() {
@@ -362,6 +393,156 @@ function wireBlocklist() {
       dl.innerHTML = body.suggestions
         .map((s) => '<option value="' + escapeHtml(s) + '"></option>').join("");
     }, 220);
+  });
+}
+
+// ── Headers rastreados ──────────────────────────────────────────────────
+// La lista autoritativa vive en el servidor (por workspace); el localStorage
+// solo es un cache para arrancar mas rapido.
+let TRACKED_HEADERS = [];
+try {
+  const saved = JSON.parse(localStorage.getItem("akg-tracked-headers-v1") || "[]");
+  if (Array.isArray(saved)) {
+    TRACKED_HEADERS = saved
+      .filter((h) => typeof h === "string" && h.trim())
+      .map((h) => h.trim());
+  }
+} catch (_) { TRACKED_HEADERS = []; }
+
+function persistTrackedHeaders() {
+  try { localStorage.setItem("akg-tracked-headers-v1", JSON.stringify(TRACKED_HEADERS)); } catch (_) {}
+}
+
+function renderTrackedHeaderList() {
+  const el = document.getElementById("header-list");
+  if (!el) return;
+  el.innerHTML = TRACKED_HEADERS.length
+    ? TRACKED_HEADERS.map((h) =>
+        '<div class="block-item">' +
+          '<span class="bi-badge" style="background:#e84393;border:1px solid #a02963;color:#fff;font-size:9px;padding:0 4px;border-radius:3px;margin-right:5px;">H</span>' +
+          '<span class="bi-label" title="' + escapeHtml(h) + '">' + escapeHtml(h) + '</span>' +
+          '<button class="bi-x" data-header="' + escapeHtml(h) + '">\u2715</button></div>'
+      ).join("")
+    : '<div class="block-item"><span class="bi-label muted">sin headers rastreados</span></div>';
+}
+
+async function loadHeaderSuggestions() {
+  const dl = document.getElementById("header-suggest");
+  if (!dl) return;
+  const q = (document.getElementById("header-input").value || "").trim();
+  const ws = $("#ws-select").value;
+  if (!q || !ws) { dl.innerHTML = ""; return; }
+  const { ok, body } = await api(
+    "/graph/header-suggestions?q=" + encodeURIComponent(q) +
+    "&limit=10&workspace_id=" + encodeURIComponent(ws)
+  );
+  if (!ok || !body?.suggestions) return;
+  dl.innerHTML = body.suggestions
+    .map((s) => '<option value="' + escapeHtml(s) + '"></option>').join("");
+}
+
+// sincroniza la lista desde el servidor (fuente de verdad)
+async function syncTrackedHeaders(showGraph) {
+  const ws = $("#ws-select").value;
+  if (!ws) { TRACKED_HEADERS = []; persistTrackedHeaders(); renderTrackedHeaderList(); return; }
+  const { ok, body } = await api("/graph/headers?workspace_id=" + encodeURIComponent(ws));
+  if (!ok || !Array.isArray(body?.tracked)) return;
+  TRACKED_HEADERS = body.tracked;
+  persistTrackedHeaders();
+  renderTrackedHeaderList();
+  if (showGraph) {
+    if (TRACKED_HEADERS.length) buildGraphFromViews(body, "headers");
+    else await runQuery();
+  }
+}
+
+async function renderTrackedHeaders() {
+  const ws = $("#ws-select").value;
+  if (!ws) { log("selecciona un workspace primero", "err"); return; }
+  if (!TRACKED_HEADERS.length) { await runQuery(); return; }
+  const { ok, body } = await api("/graph/headers/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ headers: TRACKED_HEADERS, workspace_id: ws }),
+  });
+  if (!ok) {
+    log("error al rastrear headers: " + (body?.error?.message || body?.detail || "desconocido"), "err");
+    return;
+  }
+  if (body.tracked) { TRACKED_HEADERS = body.tracked; persistTrackedHeaders(); renderTrackedHeaderList(); }
+  const headerNodes = (body.nodes || []).filter((n) => (n.labels || [])[0] === "Header");
+  if (!headerNodes.length) {
+    log("ninguno de estos headers aparece en este workspace", "err");
+  }
+  buildGraphFromViews(body, "headers");
+  highlightAuthEndpoints(body.nodes);
+  log("headers rastreados: " + TRACKED_HEADERS.join(", "), "ok");
+}
+
+async function addTrackedHeader() {
+  const inp = document.getElementById("header-input");
+  const name = (inp.value || "").trim();
+  const ws = $("#ws-select").value;
+  if (!name) return;
+  if (!ws) { log("selecciona un workspace primero", "err"); return; }
+  inp.value = "";
+  document.getElementById("header-suggest").innerHTML = "";
+  const { ok, body } = await api("/graph/headers/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ headers: [name], workspace_id: ws }),
+  });
+  if (!ok) {
+    log("error al rastrear header: " + (body?.error?.message || body?.detail || "desconocido"), "err");
+    return;
+  }
+  TRACKED_HEADERS = body.tracked || TRACKED_HEADERS;
+  persistTrackedHeaders();
+  renderTrackedHeaderList();
+  const headerNodes = (body.nodes || []).filter((n) => (n.labels || [])[0] === "Header");
+  if (!headerNodes.length) {
+    log("el header '" + name + "' no aparece en este workspace", "err");
+  }
+  buildGraphFromViews(body, "headers");
+  highlightAuthEndpoints(body.nodes);
+  await loadSummary();
+}
+
+async function removeTrackedHeader(name) {
+  const ws = $("#ws-select").value;
+  if (ws) {
+    const { body } = await api("/graph/headers?name=" + encodeURIComponent(name) +
+      "&workspace_id=" + encodeURIComponent(ws), { method: "DELETE" });
+    if (body?.tracked) { TRACKED_HEADERS = body.tracked; }
+    else { TRACKED_HEADERS = TRACKED_HEADERS.filter((h) => h.toLowerCase() !== String(name).toLowerCase()); }
+  } else {
+    TRACKED_HEADERS = TRACKED_HEADERS.filter((h) => h.toLowerCase() !== String(name).toLowerCase());
+  }
+  persistTrackedHeaders();
+  renderTrackedHeaderList();
+  if (TRACKED_HEADERS.length) {
+    await renderTrackedHeaders();
+  } else {
+    await runQuery();
+  }
+  await loadSummary();
+}
+
+function wireTrackedHeaders() {
+  renderTrackedHeaderList();
+  document.getElementById("btn-header-add").addEventListener("click", addTrackedHeader);
+  document.getElementById("header-input").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    addTrackedHeader();
+  });
+  document.getElementById("header-list").addEventListener("click", (e) => {
+    const x = e.target.closest(".bi-x");
+    if (x && x.dataset.header) removeTrackedHeader(x.dataset.header);
+  });
+  let t = null;
+  document.getElementById("header-input").addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(loadHeaderSuggestions, 220);
   });
 }
 
@@ -1399,6 +1580,7 @@ $("#ws-select").addEventListener("change", () => {
   loadSummary();
   runQuery();
   buildLegend();
+  syncTrackedHeaders(false);
 });
 $("#detail-close").onclick = closeDetail;
 
@@ -1525,6 +1707,7 @@ Object.entries(VIEWS).forEach(([id, fn]) => {
 wireLegend();
 buildNodeTypeFilters();
 wireBlocklist();
+wireTrackedHeaders();
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;

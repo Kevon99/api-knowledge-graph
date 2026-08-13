@@ -70,6 +70,16 @@
         </details>
       </section>
       <section>
+        <h3>Headers rastreados</h3>
+        <p class="block-hint">Headers que aparecen como nodos en el grafo.</p>
+        <div class="block-add-row">
+          <input id="header-input" list="header-suggest" placeholder="X-Auth-Token, Cookie, X-Request-Id…" />
+          <datalist id="header-suggest"></datalist>
+          <button id="btn-header-add" title="Añadir header a seguimiento">+</button>
+        </div>
+        <div id="header-list" class="block-list"></div>
+      </section>
+      <section>
         <h3>Ajustar layout</h3>
         <div class="layout-presets">
           <button id="preset-dense" class="preset-btn" title="Vista ultra densa para grafos grandes, solo colores y formas">Denso</button>
@@ -169,6 +179,6 @@ window.addEventListener('error', function(e) {
 })();
 </script>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-<script type="module" src="app.js?v=28"></script>
+<script type="module" src="app.js?v=32"></script>
 </body>
 </html>

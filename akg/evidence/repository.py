@@ -8,12 +8,13 @@ body_json. Incluye las metricas/estado de la importacion relacionada.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from akg.database import SessionLocal
@@ -28,6 +29,7 @@ from akg.models import (
     HttpHeader,
     Import,
     ImportStage,
+    ParseError,
     RuleRun,
     Workspace,
 )
@@ -35,6 +37,8 @@ from akg.schemas import RawExchange
 
 if TYPE_CHECKING:
     from akg.pipeline.normalizer import NormalizeConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _sha256(text: str | None) -> str | None:
@@ -68,23 +72,72 @@ class EvidenceRepository:
         return self._session.get(Workspace, workspace_id)
 
     def delete_workspace(self, workspace_id: uuid.UUID) -> bool:
+        """Elimina workspace + todos sus datos (grafo y evidencia).
+
+        Las FK de Postgres no usan ON DELETE CASCADE, asi que se borra en
+        orden de dependencia (hijos -> padres): body_json, http_headers,
+        http_cookies, entity_occurrences, endpoint_values, http_exchanges,
+        endpoint_templates, alerts, rule_runs, parse_errors, import_stages,
+        imports y por ultimo el propio workspace. Despues limpia el subgrafo
+        Neo4j cuyo ``project`` coincide con el id del workspace.
+        """
         ws = self._session.get(Workspace, workspace_id)
         if ws is None:
             return False
-        # SQLAlchemy cascade elimina imports, stages, exchanges, headers, cookies,
-        # bodies, templates, values, occurrences, alerts, rule_runs
+
+        import_ids = list(
+            self._session.scalars(select(Import.id).where(Import.workspace_id == workspace_id))
+        )
+        if import_ids:
+            exchange_ids = list(
+                self._session.scalars(
+                    select(HttpExchange.id).where(HttpExchange.import_id.in_(import_ids))
+                )
+            )
+            template_ids = list(
+                self._session.scalars(
+                    select(EndpointTemplate.id).where(EndpointTemplate.import_id.in_(import_ids))
+                )
+            )
+
+            def _bulk_delete(orm_cls: type, col: str, ids: Sequence) -> None:
+                if not ids:
+                    return
+                # delete directo (sin cascada del ORM) respetando FK existentes
+                self._session.query(orm_cls).filter(getattr(orm_cls, col).in_(ids)).delete(
+                    synchronize_session=False
+                )
+
+            # dependientes de exchange
+            _bulk_delete(HttpHeader, "exchange_id", exchange_ids)
+            _bulk_delete(HttpCookie, "exchange_id", exchange_ids)
+            _bulk_delete(BodyJson, "exchange_id", exchange_ids)
+            _bulk_delete(EntityOccurrence, "exchange_id", exchange_ids)
+            # dependientes de template
+            _bulk_delete(EndpointValue, "template_id", template_ids)
+            # dependientes de import (o con FK a import + template/exchange)
+            _bulk_delete(HttpExchange, "import_id", import_ids)
+            _bulk_delete(EndpointTemplate, "import_id", import_ids)
+            _bulk_delete(Alert, "import_id", import_ids)
+            _bulk_delete(RuleRun, "import_id", import_ids)
+            _bulk_delete(ParseError, "import_id", import_ids)
+            _bulk_delete(ImportStage, "import_id", import_ids)
+            _bulk_delete(Import, "id", import_ids)
+
         self._session.delete(ws)
         self._session.commit()
-        # Limpieza Neo4j: borra todos los nodos y relaciones con este project
+
+        # Limpieza Neo4j: borra todos los nodos y sus relaciones de este project
         from engine.graph.repository import graph_repo
+
         pid = str(workspace_id)
         try:
             graph_repo.run_write(
                 "MATCH (n) WHERE n.project = $project_id DETACH DELETE n",
                 {"project_id": pid},
             )
-        except Exception:
-            pass
+        except Exception as exc:  # pragma: no cover - defensivo
+            logger.warning("limpieza Neo4j del workspace %s fallo: %s", pid, exc)
         return True
 
     def list_exchanges(self, import_id: uuid.UUID | None = None) -> list[HttpExchange]:
@@ -92,6 +145,107 @@ class EvidenceRepository:
         if import_id is not None:
             stmt = stmt.where(HttpExchange.import_id == import_id)
         return list(self._session.scalars(stmt).all())
+
+    # ── Headers (seguimiento de headers en el grafo) ─────────────────────────
+    def list_header_names(
+        self,
+        workspace_id: uuid.UUID,
+        q: str = "",
+        limit: int = 25,
+    ) -> list[str]:
+        """Nombres de headers distintos que aparecen en un workspace."""
+        stmt = (
+            select(HttpHeader.name)
+            .join(HttpExchange, HttpExchange.id == HttpHeader.exchange_id)
+            .join(Import, Import.id == HttpExchange.import_id)
+            .where(Import.workspace_id == workspace_id)
+        )
+        if q:
+            stmt = stmt.where(func.lower(HttpHeader.name).like(f"%{q.lower()}%"))
+        stmt = stmt.distinct().order_by(HttpHeader.name).limit(limit)
+        return [r[0] for r in self._session.execute(stmt)]
+
+    def header_endpoints(
+        self,
+        workspace_id: uuid.UUID,
+        header_names: Sequence[str],
+        limit: int = 200,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Por header (lowercase), endpoints que lo usan y cuantos exchanges.
+
+        Un header ``X-Auth-Token`` devuelve:
+        ``{"x-auth-token": [{"method", "pattern", "host", "count"}, ...]}``
+        """
+        names = {n.lower() for n in header_names if n and n.strip()}
+        if not names:
+            return {}
+        method = func.coalesce(EndpointTemplate.method, HttpExchange.method)
+        pattern = func.coalesce(EndpointTemplate.pattern, HttpExchange.path)
+        host = func.coalesce(EndpointTemplate.host_pattern, HttpExchange.host)
+        rows = self._session.execute(
+            select(
+                func.lower(HttpHeader.name).label("hname"),
+                method.label("method"),
+                pattern.label("pattern"),
+                host.label("host"),
+                func.count(func.distinct(HttpExchange.id)).label("count"),
+            )
+            .select_from(HttpHeader)
+            .join(HttpExchange, HttpExchange.id == HttpHeader.exchange_id)
+            .join(Import, Import.id == HttpExchange.import_id)
+            .outerjoin(EndpointTemplate, EndpointTemplate.id == HttpExchange.template_id)
+            .where(Import.workspace_id == workspace_id)
+            .where(func.lower(HttpHeader.name).in_(sorted(names)))
+            .group_by(method, pattern, host, func.lower(HttpHeader.name))
+            .limit(limit)
+        ).all()
+        out: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            out.setdefault(row.hname, []).append(
+                {
+                    "method": row.method,
+                    "pattern": row.pattern,
+                    "host": row.host,
+                    "count": row.count,
+                }
+            )
+        return out
+
+    # Lista de headers rastreados (persistida en el workspace, autoritativa)
+    def get_tracked_headers(self, workspace_id: uuid.UUID) -> list[str]:
+        ws = self._session.get(Workspace, workspace_id)
+        if ws is None:
+            return []
+        cfg = ws.config or {}
+        return [h for h in (cfg.get("tracked_headers") or []) if isinstance(h, str)]
+
+    def set_tracked_headers(self, workspace_id: uuid.UUID, headers: Sequence[str]) -> list[str]:
+        ws = self._session.get(Workspace, workspace_id)
+        if ws is None:
+            raise KeyError(f"workspace {workspace_id} no existe")
+        tracked: list[str] = []
+        seen: set[str] = set()
+        for name in headers:
+            n = name.strip()
+            if n and n.lower() not in seen:
+                tracked.append(n)
+                seen.add(n.lower())
+        cfg = dict(ws.config or {})
+        cfg["tracked_headers"] = tracked
+        ws.config = cfg
+        self._session.commit()
+        return tracked
+
+    def add_tracked_headers(self, workspace_id: uuid.UUID, headers: Sequence[str]) -> list[str]:
+        return self.set_tracked_headers(
+            workspace_id, [*self.get_tracked_headers(workspace_id), *headers]
+        )
+
+    def remove_tracked_header(self, workspace_id: uuid.UUID, name: str) -> list[str]:
+        return self.set_tracked_headers(
+            workspace_id,
+            [h for h in self.get_tracked_headers(workspace_id) if h.lower() != name.lower()],
+        )
 
     # ── Importaciones ───────────────────────────────────────────────────────
     def create_import(

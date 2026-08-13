@@ -130,6 +130,11 @@ class GraphSummary(BaseModel):
     relationship_counts: dict[str, int]
 
 
+class HeaderTrack(BaseModel):
+    headers: list[str] = Field(default_factory=list, min_length=1, max_length=50)
+    workspace_id: uuid.UUID
+
+
 class ExchangeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -281,6 +286,7 @@ __all__ = [
     "GraphNode",
     "GraphEdge",
     "GraphSummary",
+    "HeaderTrack",
     "ExchangeOut",
     "ExchangeDetailOut",
     "HeaderOut",
