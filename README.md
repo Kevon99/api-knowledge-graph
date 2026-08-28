@@ -1,99 +1,110 @@
+<div align="center">
+
 # API Knowledge Graph
 
-Plataforma inteligente para el análisis de seguridad de APIs que transforma tráfico HTTP capturado en un **grafo de conocimiento** navegable — el "BloodHound" de las APIs modernas.
+**Intelligent API security analysis** that turns captured HTTP traffic into a navigable **knowledge graph** — the "BloodHound" for modern APIs.
 
-## Idea
+</div>
 
-Una auditoría de API puede generar decenas de miles de peticiones. Las herramientas actuales muestran ese tráfico como una secuencia lineal, obligando al analista a reconstruir mentalmente cómo interactúan los componentes.
+---
 
-Este proyecto almacena **conocimiento, no peticiones**: convierte cada request en evidencia, genera relaciones entre entidades, y construye un modelo navegable de la aplicación (flujos de autenticación, recursos de negocio, infraestructura, permisos y timeline).
+## Overview
 
-Ver la visión completa en [`IDEA.md`](./IDEA.md).
+An API audit can generate tens of thousands of requests. Conventional tooling renders this traffic as a flat, linear sequence, forcing the analyst to mentally reconstruct how components interact.
 
-## Documentación
+This project stores **knowledge, not requests**: every request becomes evidence, relationships between entities are inferred, and a navigable model of the application is assembled — covering authentication flows, business resources, infrastructure, permissions, and full timelines.
 
-La **Especificación de Arquitectura de Software (SAD)** está en [`docs/sad/`](./docs/sad/README.md). 16 capítulos (~50–60 páginas) que definen:
+See the complete vision in [`IDEA.md`](./IDEA.md).
 
-| Capítulo | Tema |
-|----------|------|
-| `01` | Introducción, problema, objetivos y criterios de éxito |
-| `02` | Principios arquitectónicos y ADRs |
-| `03` | Arquitectura general (C4) y stack tecnológico |
-| `04` | Pipeline de procesamiento (7 etapas) |
-| `05` | Modelo de datos relacional (evidencia, PostgreSQL) |
-| `06` | Esquema del grafo de conocimiento (Neo4j) |
-| `07` | Motor de correlación y modelo de confianza |
-| `08` | Sistema de reglas (DSL y catálogo) |
-| `09` | API REST interna |
-| `10` | Vistas del sistema y frontend |
-| `11` | Seguridad y privacidad |
-| `12` | Despliegue y operaciones |
-| `13` | **Hoja de ruta v0.1 → v3.0** |
-| `14` | Riesgos y mitigaciones |
-| `15` | Glosario y apéndices |
+## Documentation
 
-Para empezar a programar: [`docs/sad/16-backlog-de-implementacion.md`](./docs/sad/16-backlog-de-implementacion.md).
+The **Software Architecture Specification (SAD)** lives in [`docs/sad/`](./docs/sad/README.md). Its 16 chapters (~50–60 pages) define the system end to end:
 
-## Stack propuesto
+| Chapter | Topic |
+|---------|-------|
+| `01` | Introduction, problem statement, goals, and success criteria |
+| `02` | Architectural principles and ADRs |
+| `03` | High-level architecture (C4) and technology stack |
+| `04` | Processing pipeline (7 stages) |
+| `05` | Relational data model (evidence, PostgreSQL) |
+| `06` | Knowledge graph schema (Neo4j) |
+| `07` | Correlation engine and trust model |
+| `08` | Rule system (DSL and catalogue) |
+| `09` | Internal REST API |
+| `10` | System views and frontend |
+| `11` | Security and privacy |
+| `12` | Deployment and operations |
+| `13` | **Roadmap v0.1 → v3.0** |
+| `14` | Risks and mitigations |
+| `15` | Glossary and appendices |
 
-- **Backend**: Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy/Alembic
-- **Grafo**: Neo4j 5 (Cypher)
-- **Evidencia**: PostgreSQL 15 (JSONB)
-- **Colas**: Redis Streams (arq)
-- **Frontend**: React 18 + TypeScript + Cytoscape.js
-- **Ops**: Docker Compose, OpenTelemetry/Prometheus/Grafana
+Ready to start coding? See [`docs/sad/16-backlog-de-implementacion.md`](./docs/sad/16-backlog-de-implementacion.md).
 
-## Hoja de ruta resumida
+## Technology Stack
 
-| Versión | Enfoque |
-|---------|---------|
-| **v0.1** | Prototipo: importar Burp Logger → grafo navegable básico |
-| **v1.0** | Producto MVP: correlación robusta, motor de reglas, API estable |
-| **v2.0** | IA sobre el grafo, nuevas fuentes (HAR/OpenAPI/mitmproxy), multiusuario |
-| **v3.0** | Plataforma enterprise: HA, ecosistema de reglas, integraciones |
+| Layer | Choice |
+|-------|--------|
+| **Backend** | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy/Alembic |
+| **Graph** | Neo4j 5 (Cypher) |
+| **Evidence store** | PostgreSQL 15 (JSONB) |
+| **Queues** | Redis Streams (arq) |
+| **Frontend** | React 18 + TypeScript + Cytoscape.js |
+| **Ops** | Docker Compose, OpenTelemetry/Prometheus/Grafana |
 
-## Estado
+## Roadmap
 
-Proyecto en fase de **implementación (v0.1)**. El pipeline ETL (importar Burp → normalizar → correlacionar → materializar en Neo4j → persistir en PostgreSQL), la API REST y una UI básica están funcionando.
+| Version | Focus |
+|---------|-------|
+| **v0.1** | Prototype: import Burp Logger → basic navigable graph |
+| **v1.0** | MVP: robust correlation, rule engine, stable API |
+| **v2.0** | AI on the graph, new sources (HAR/OpenAPI/mitmproxy), multi-user |
+| **v3.0** | Enterprise platform: HA, rule ecosystem, integrations |
 
-## Cómo ejecutar
+## Status
 
-Requisitos: `uv`, `docker` + `docker compose`.
+Project currently in **implementation (v0.1)**. The ETL pipeline (import Burp → normalize → correlate → materialize into Neo4j → persist in PostgreSQL), the REST API, and a basic UI are functional.
+
+## Getting Started
+
+Requirements: `uv`, `docker` and `docker compose`.
 
 ```bash
-make setup     # levanta PostgreSQL+Neo4j+Redis y crea el esquema (BD + grafo)
-make dev       # setup + arranca la API en http://localhost:8000
+make setup     # starts PostgreSQL + Neo4j + Redis and creates the schema (DB + graph)
+make dev       # setup + runs the API at http://localhost:8000
 ```
 
-Alternativamente, paso a paso:
+Alternatively, step by step:
 
 ```bash
-make up            # contenedores
-make schema        # migraciones Alembic + esquema Neo4j
-make api           # uvicorn con reload
+make up            # containers
+make schema        # Alembic migrations + Neo4j schema
+make api           # uvicorn with reload
 ```
 
-Endpoints:
-- `http://localhost:8000/docs` — Swagger
-- `http://localhost:8000/ui/` — UI web del grafo
-- `POST /api/v1/imports` — subir un export de Burp y disparar el pipeline
+### Endpoints
 
-Calidad:
+- `http://localhost:8000/docs` — Swagger UI
+- `http://localhost:8000/ui/` — Web graph UI
+- `POST /api/v1/imports` — upload a Burp export and trigger the pipeline
+
+### Quality
 
 ```bash
-make test       # tests unitarios (sin infra)
-make test-int   # tests de integración (con infra arriba)
+make test       # unit tests (no infra)
+make test-int   # integration tests (requires infra)
 make lint       # ruff + mypy
-make smoke      # chequeo fundacional (PostgreSQL + Neo4j + schemas)
+make smoke      # foundational check (PostgreSQL + Neo4j + schemas)
 ```
 
-Datos de muestra en `dev/samples/burp_sample.json`.
+Sample data is available at `dev/samples/burp_sample.json`.
 
-| Comando | Descripción |
+## Make Targets
+
+| Command | Description |
 |---------|-------------|
-| `make setup` | Infra + esquema BD + Neo4j + migraciones |
-| `make dev` | Todo + API en `:8000` |
-| `make api` | Solo servidor |
+| `make setup` | Infra + DB schema + Neo4j schema + migrations |
+| `make dev` | Everything + API on `:8000` |
+| `make api` | Server only |
 | `make test` / `test-int` / `test-all` | Tests |
-| `make lint` / `format` | Calidad |
-| `make down` / `clean` | Parar infra / limpiar |
+| `make lint` / `format` | Code quality |
+| `make down` / `clean` | Stop infra / clean up |
