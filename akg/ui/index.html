@@ -40,14 +40,14 @@
       <section>
         <h3>Explorar nodos</h3>
         <label>Buscar
-          <input id="node-label" list="labels-list" placeholder="app, api, *.hubspot.com…" />
+          <input id="node-label" list="labels-list" placeholder="app, api, *.domain.com…" />
         </label>
         <datalist id="labels-list"></datalist>
         <div class="row">
           <label>Límite
             <input id="node-limit" type="number" min="10" max="800" value="500" style="width:64px" />
           </label>
-          <button id="btn-clear-filter" title="Limpiar filtro">✕</button>
+          <button id="btn-clear-filter" title="Limpiar filtro"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <button id="btn-query">Ejecutar</button>
       </section>
@@ -57,7 +57,7 @@
         <div class="block-add-row">
           <input id="block-input" list="block-suggest" placeholder="api.example.com o GET /users/..." />
           <datalist id="block-suggest"></datalist>
-          <button id="btn-block-add" title="Añadir a excluidos">+</button>
+          <button id="btn-block-add" title="Añadir a excluidos"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <div id="block-type-select" class="block-type-select">
           <label class="bt-label" data-btype="host">Host <span class="bt-count" id="bt-count-host">0</span></label>
@@ -75,7 +75,7 @@
         <div class="block-add-row">
           <input id="header-input" list="header-suggest" placeholder="X-Auth-Token, Cookie, X-Request-Id…" />
           <datalist id="header-suggest"></datalist>
-          <button id="btn-header-add" title="Añadir header a seguimiento">+</button>
+          <button id="btn-header-add" title="Añadir header a seguimiento"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <div id="header-list" class="block-list"></div>
       </section>
@@ -112,7 +112,7 @@
         </details>
         <div class="row">
           <button id="layout-reset">Restablecer</button>
-          <button id="btn-fit" title="Restablecer vista a todo el grafo" style="font-size:12px;">↔ Encuadrar</button>
+          <button id="btn-fit" title="Restablecer vista a todo el grafo"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Encuadrar</span></button>
         </div>
       </section>
       <section>
@@ -130,15 +130,15 @@
       <div id="graph-panel" class="panel">
         <div class="graph-legend" id="legend">
           <div class="legend-group" data-signal="token">
-            <button class="legend-btn"><i class="dot dot-token"></i> token <span class="caret">▾</span></button>
+            <button class="legend-btn"><i class="dot dot-token"></i> token <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="legend-drop"></div>
           </div>
           <div class="legend-group" data-signal="cookie">
-            <button class="legend-btn"><i class="dot dot-cookie"></i> cookie <span class="caret">▾</span></button>
+            <button class="legend-btn"><i class="dot dot-cookie"></i> cookie <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="legend-drop"></div>
           </div>
           <div class="legend-group" data-signal="public">
-            <button class="legend-btn"><i class="dot dot-public"></i> público <span class="caret">▾</span></button>
+            <button class="legend-btn"><i class="dot dot-public"></i> público <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="legend-drop"></div>
           </div>
           <div class="legend-group" data-signal="all">
@@ -152,7 +152,7 @@
       <div id="detail" class="panel detail hidden">
         <div class="detail-head">
           <h3 id="detail-title">Detalle</h3>
-          <button id="detail-close">&times;</button>
+          <button id="detail-close" title="Cerrar"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <pre id="detail-body"></pre>
       </div>
@@ -179,6 +179,6 @@ window.addEventListener('error', function(e) {
 })();
 </script>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-<script type="module" src="app.js?v=32"></script>
+<script type="module" src="app.js?v=33"></script>
 </body>
 </html>

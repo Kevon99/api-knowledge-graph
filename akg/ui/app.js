@@ -140,16 +140,16 @@ async function uploadFile(file) {
 let network = null;
 
 const NODE_COLORS = {
-  Host: { bg: "#4c72b0", border: "#2a4a8a", icon: "🖥" },
-  Endpoint: { bg: "#55a868", border: "#33703d", icon: "⚡" },
-  Token: { bg: "#e74c3c", border: "#b03a2e", icon: "🔑" },
-  Cookie: { bg: "#9b59b6", border: "#7d3c98", icon: "🍪" },
-  Session: { bg: "#f39c12", border: "#d68910", icon: "📋" },
-  Resource: { bg: "#3498db", border: "#1f6fa8", icon: "📄" },
-  Flow: { bg: "#e67e22", border: "#c06514", icon: "🔀" },
-  AuthFlow: { bg: "#ff6b3d", border: "#cc5028", icon: "🔐" },
-  Exchange: { bg: "#7f8c8d", border: "#5d6d6d", icon: "📨" },
-  Header: { bg: "#e84393", border: "#a02963", icon: "🏷" },
+  Host: { bg: "#4c72b0", border: "#2a4a8a" },
+  Endpoint: { bg: "#55a868", border: "#33703d" },
+  Token: { bg: "#e74c3c", border: "#b03a2e" },
+  Cookie: { bg: "#9b59b6", border: "#7d3c98" },
+  Session: { bg: "#f39c12", border: "#d68910" },
+  Resource: { bg: "#3498db", border: "#1f6fa8" },
+  Flow: { bg: "#e67e22", border: "#c06514" },
+  AuthFlow: { bg: "#ff6b3d", border: "#cc5028" },
+  Exchange: { bg: "#7f8c8d", border: "#5d6d6d" },
+  Header: { bg: "#e84393", border: "#a02963" },
 };
 
 const DEFAULT_BG = "#95a5a6";
@@ -784,7 +784,7 @@ function renderGraph(nodes, edges, cypherType) {
       width: isHuge ? 0.4 : (isLargeGraph ? 0.6 : 1.5),
       widthConstraint: { maximum: isLargeGraph ? 1.5 : 3 },
       font: { size: 7, align: "middle", color: "#666", strokeWidth: 0 },
-      color: { color: isHuge ? "#2a2a3a" : (isLargeGraph ? "#3a3a4a" : "#555"), highlight: "#4f8cff", hover: "#4f8cff" },
+      color: { color: isHuge ? "#2a2a3a" : (isLargeGraph ? "#3a3a4a" : "#555"), highlight: "#8fdb6e", hover: "#8fdb6e" },
       hoverWidth: 0,
       selectionWidth: 0,
     },
@@ -976,8 +976,8 @@ function renderIsolateActions(node) {
     const isolateBtn = document.createElement("button");
     isolateBtn.className = "req-btn";
     isolateBtn.style.flex = "1";
-    isolateBtn.style.background = "rgba(79,140,255,0.15)";
-    isolateBtn.style.color = "#79a9ff";
+    isolateBtn.style.background = "rgba(143,219,110,0.14)";
+    isolateBtn.style.color = "#b7f28f";
     isolateBtn.textContent = "Aislar grafo";
     isolateBtn.onclick = () => isolateNodeGraph(node.id);
     actions.appendChild(isolateBtn);
@@ -1376,7 +1376,7 @@ function buildTestRequest(original, fields, ruleId) {
     // muta el valor del id en el path para probar acceso cruzado
     target = mutatePathId(target);
     hint =
-      "Sustituye el ID del recurso por otro valor (p.ej. 1 → 9999) y comprueba " +
+      "Sustituye el ID del recurso por otro valor (p.ej. 1 -> 9999) y comprueba " +
       "si responde con datos ajenos sin autorización (status 200 vs 403/404).";
   } else if (ruleId === "R-AUTH-001") {
     hint =
@@ -1526,7 +1526,7 @@ async function runQuery() {
         to: toId,
         label: type.slice(0, 10) + (conf ? ` · ${conf.slice(0, 3)}` : ""),
         arrows: "to",
-        color: { color: CONF_COLORS[conf] || "#888", highlight: "#4f8cff" },
+        color: { color: CONF_COLORS[conf] || "#888", highlight: "#8fdb6e" },
       });
     }
   });
@@ -1649,7 +1649,7 @@ function buildNodeTypeFilters() {
     const c = NODE_COLORS[k];
     const checked = NODE_TYPES_VISIBLE[k] !== false;
     return `<label class="ntf-toggle ${checked ? "on" : ""}" data-kind="${k}" style="--ntf-color:${c.bg};--ntf-border:${c.border}">
-      <span class="ntf-icon">${c.icon}</span> ${k}
+      <span class="ntf-dot" aria-hidden="true"></span> ${k}
     </label>`;
   }).join("");
 
