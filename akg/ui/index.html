@@ -14,7 +14,7 @@
         <select id="ws-select"></select>
       </label>
 <button id="btn-new-ws">Nuevo</button>
-          <button id="btn-del-ws" style="color:#e74c3c" title="Eliminar workspace y todo su grafo">Eliminar</button>
+          <button id="btn-del-ws" style="color:var(--err)" title="Eliminar workspace y todo su grafo">Eliminar</button>
           <button id="btn-upload">Subir Burp</button>
       <input type="file" id="file-input" accept=".json,.xml,.txt" hidden />
     </div>
@@ -88,25 +88,25 @@
           <button id="preset-expanded" class="preset-btn" title="Vista expandida — nodos grandes, máxima separación">Expandido</button>
         </div>
         <label class="settings-label hidden-toggle">Tamaño nodo
-          <input id="adj-size" type="range" min="10" max="40" step="1" />
+          <input id="adj-size" type="range" min="6" max="30" step="1" />
           <span id="adj-size-v" class="range-val"></span>
         </label>
-        <label class="settings-label hidden-toggle">Separación
-          <input id="adj-spring" type="range" min="80" max="600" step="10" />
+        <label class="settings-label hidden-toggle">Sep. nodos
+          <input id="adj-spring" type="range" min="4" max="80" step="1" />
           <span id="adj-spring-v" class="range-val"></span>
         </label>
-        <label class="settings-label hidden-toggle">Repulsión
-          <input id="adj-repulsion" type="range" min="2000" max="40000" step="500" />
+        <label class="settings-label hidden-toggle">Sep. niveles
+          <input id="adj-repulsion" type="range" min="20" max="240" step="2" />
           <span id="adj-repulsion-v" class="range-val"></span>
         </label>
         <details class="collapsible advanced-sliders">
           <summary>Ajustes avanzados</summary>
-          <label>Evitar solape
+          <label>Sep. aristas
             <input id="adj-overlap" type="range" min="0" max="100" step="5" />
             <span id="adj-overlap-v" class="range-val"></span>
           </label>
           <label>Letra
-            <input id="adj-font" type="range" min="9" max="18" step="1" />
+            <input id="adj-font" type="range" min="8" max="14" step="1" />
             <span id="adj-font-v" class="range-val"></span>
           </label>
         </details>
@@ -147,7 +147,7 @@
           </div>
         </div>
         <div id="graph"></div>
-        <div class="graph-hint" id="graph-hint">Scroll: zoom · Arrastrar: mover · Click nodo: detalle · F: encuadrar</div>
+        <div class="graph-hint" id="graph-hint">Scroll: zoom · Click nodo: detalle · Click der.: opciones · F: encuadrar · R: re-layout · Ctrl+K: buscar</div>
       </div>
       <div id="detail" class="panel detail hidden">
         <div class="detail-head">
@@ -178,7 +178,9 @@ window.addEventListener('error', function(e) {
   };
 })();
 </script>
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-<script type="module" src="app.js?v=33"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+<script type="module" src="app.js?v=40"></script>
 </body>
 </html>

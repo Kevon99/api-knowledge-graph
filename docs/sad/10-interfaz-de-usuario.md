@@ -119,37 +119,52 @@ Consola de Cypher con sandbox (mismo motor que `POST /graph/query`):
 
 ## 10.4 Panel de grafo (Cytoscape.js)
 
+La implementación sigue una estética tipo BloodHound: canvas casi negro (`#0d1117`), sin sombras, sin gradientes, sin animaciones de layout. Los principios de codificación visual son:
+
+1. **La forma codifica la categoría del nodo** (canal robusto: funciona con daltonismo y con zoom bajo).
+2. **El color de arista codifica la confianza** de la relación.
+3. **El color saturado está reservado al estado** (selección, foco) y a señales de riesgo.
+4. **El grafo es estático**: layout `dagre` determinista, sin física continua. Las posiciones se persisten por workspace (memoria espacial del analista).
+
 ### 10.4.1 Configuración de estilos
 
-| Tipo de nodo | Color | Forma |
-|--------------|-------|-------|
-| `Endpoint` | azul | rectángulo |
-| `Token` / `Cookie` | naranja | hexágono |
-| `Resource` / `BusinessObject` | verde | elipse |
-| `Role` / `Scope` / `Principal` | morado | diamante |
-| `Host` / `Service` / `External` | gris | rectángulo redondeado |
-| `Hypothesis` | punteado amarillo | punteado |
+| Tipo de nodo | Forma | Color (apagado) |
+|--------------|-------|-----------------|
+| `Host` | hexágono | gris-azulado |
+| `Endpoint` | elipse | verde |
+| `Token` | diamante | rojo |
+| `Cookie` | triángulo | violeta |
+| `Session` | rectángulo | ámbar |
+| `Resource` | rectángulo redondeado | cian |
+| `Flow` / `AuthFlow` | etiqueta / estrella | naranja |
+| `Exchange` | elipse | gris |
+| `Header` | barril | rosa |
 
-| Relación | Estilo |
-|----------|--------|
-| `EVIDENCIA` | línea continua |
-| `INFERENCIA` | línea discontinua |
-| `HIPOTESIS` | línea punteada |
+| Señal | Representación |
+|-------|----------------|
+| Confianza `EVIDENCIA` | arista verde |
+| Confianza `INFERENCIA` | arista ámbar |
+| Confianza `HIPOTESIS` | arista roja |
+| Endpoint con `token` | anillo azul (`#79c0ff`) en el borde del nodo |
+| Endpoint con `cookie` | anillo violeta (`#d2a8ff`) |
+| Selección / foco | borde acento `#58a6ff` + atenuación del resto (opacidad ~0.22) |
+
+Las etiquetas de arista solo se muestran al pasar el ratón o al seleccionar la arista (nunca todas a la vez).
 
 ### 10.4.2 Layouts
 
-- `cose` para exploración general.
-- `breadthfirst` para flujos de autenticación y recursos (top-down).
-- `concentric` para análisis de centralidad.
-- Layout por vista predefinido, conmutable por el usuario.
+- `dagre` top-to-bottom como layout por defecto: determinista, jerárquico, sin animación.
+- Posiciones de nodo persistidas en `localStorage` por workspace; al recargar se restauran si cubren la mayoría del grafo.
+- Re-layout solo por acción explícita del usuario (botón/tecla `R`) o al cambiar preset.
+- Presets de densidad (`Denso`/`Compacto`/`Balanceado`/`Expandido`) ajustan `nodeSep`/`rankSep` de dagre, no parámetros de física.
 
 ### 10.4.3 Interacciones
 
-- Hover → tooltip con propiedades esenciales.
-- Clic → panel de detalle.
-- Doble clic → expandir vecinos (1 salto).
-- Selección múltiple → comparación (p. ej., dos JWT).
-- Filtro por confianza/import en la barra lateral.
+- Hover nodo → foco: vecindad al 100%, resto atenuado.
+- Clic nodo → panel de detalle.
+- Clic derecho → menú contextual: ver detalle, aislar vecindad/reintegrar, ocultar (lista de excluidos).
+- `F` encuadra el grafo; `R` recalcula el layout; `Ctrl/Cmd+K` enfoca el buscador; `Esc` cierra paneles y menús.
+- Filtro por tipo de nodo y por confianza/import en la barra lateral.
 
 ## 10.5 Panel de detalle de nodo
 

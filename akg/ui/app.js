@@ -44,7 +44,7 @@ async function loadSummary() {
 // ---- Workspaces ────────────────────────────────────────────────────────
 function resetGraphView() {
   $("#summary").innerHTML = "<div class='row'>sin workspaces</div>";
-  if (network) { network.destroy(); network = null; }
+  if (cy) { cy.destroy(); cy = null; }
   graphEl.innerHTML = "<div class='hint'>crea o selecciona un workspace</div>";
   lastGraph = null;
   nodesById.clear();
@@ -136,45 +136,59 @@ async function uploadFile(file) {
   runQuery();
 }
 
-// ── Grafo (consulta Cypher → vis-network) ───────────────────────────────
-let network = null;
+// ── Grafo (consulta Cypher → cytoscape + dagre) ─────────────────────────
+if (window.cytoscape && window.cytoscapeDagre) cytoscape.use(window.cytoscapeDagre);
+let cy = null;
 
+// Paleta de categoría (apagada; el color "fuerte" se reserva a estado/datos)
 const NODE_COLORS = {
-  Host: { bg: "#4c72b0", border: "#2a4a8a" },
-  Endpoint: { bg: "#55a868", border: "#33703d" },
-  Token: { bg: "#e74c3c", border: "#b03a2e" },
-  Cookie: { bg: "#9b59b6", border: "#7d3c98" },
-  Session: { bg: "#f39c12", border: "#d68910" },
-  Resource: { bg: "#3498db", border: "#1f6fa8" },
-  Flow: { bg: "#e67e22", border: "#c06514" },
-  AuthFlow: { bg: "#ff6b3d", border: "#cc5028" },
-  Exchange: { bg: "#7f8c8d", border: "#5d6d6d" },
-  Header: { bg: "#e84393", border: "#a02963" },
+  Host: { bg: "#8ea3b8", border: "#5b6b7c" },
+  Endpoint: { bg: "#3fb950", border: "#238636" },
+  Token: { bg: "#f85149", border: "#b62324" },
+  Cookie: { bg: "#d2a8ff", border: "#8957e5" },
+  Session: { bg: "#d29922", border: "#9e6a03" },
+  Resource: { bg: "#39c5cf", border: "#1b7c83" },
+  Flow: { bg: "#f0883e", border: "#bc4c00" },
+  AuthFlow: { bg: "#f0883e", border: "#bc4c00" },
+  Exchange: { bg: "#6e7681", border: "#484f58" },
+  Header: { bg: "#db61a2", border: "#a93d79" },
 };
 
-const DEFAULT_BG = "#95a5a6";
+const DEFAULT_BG = "#8b949e";
+const BORDER_SOFT = "#30363d";
+const ACCENT = "#58a6ff";
+const LABEL_COLOR = "#8b949e";
 
-const CONF_COLORS = { EVIDENCIA: "#27ae60", INFERENCIA: "#f1c40f" };
+// Color de arista = confianza de la relación
+const CONF_COLORS = { EVIDENCIA: "#3fb950", INFERENCIA: "#d29922", HIPOTESIS: "#f85149" };
 
 const NODE_SHAPES = {
   Host: "hexagon",
-  Endpoint: "dot",
+  Endpoint: "ellipse",
   Token: "diamond",
   Cookie: "triangle",
-  Session: "square",
-  Resource: "box",
-  Flow: "star",
+  Session: "rectangle",
+  Resource: "round-rectangle",
+  Flow: "tag",
   AuthFlow: "star",
-  Exchange: "dot",
-  Header: "box",
+  Exchange: "ellipse",
+  Header: "barrel",
+};
+
+// Señal auth → anillo (borde) en elendpoint, no cambia el relleno
+const AUTH_RING = {
+  token: "#79c0ff",
+  cookie: "#d2a8ff",
 };
 
 // ── Ajustes de layout (persistidos en localStorage) ─────────────────────
+// ── Ajustes de layout dagre (persistidos en localStorage) ─────────────
+// spring → separación entre nodos del mismo nivel · repulsion → separación entre niveles
 const LAYOUT_PRESETS = {
-  dense: { spring: 60, repulsion: 3000, overlap: 0.3, size: 8, font: 8, damping: 0.3, centralGravity: 0.3 },
-  compact: { spring: 130, repulsion: 6000, overlap: 0.4, size: 14, font: 10, damping: 0.2, centralGravity: 0.15 },
-  balanced: { spring: 220, repulsion: 8000, overlap: 0.5, size: 18, font: 12, damping: 0.12, centralGravity: 0.08 },
-  expanded: { spring: 380, repulsion: 18000, overlap: 0.7, size: 24, font: 14, damping: 0.08, centralGravity: 0.04 },
+  dense: { spring: 10, repulsion: 40, overlap: 0.0, size: 8, font: 8 },
+  compact: { spring: 16, repulsion: 56, overlap: 0.0, size: 12, font: 9 },
+  balanced: { spring: 28, repulsion: 88, overlap: 0.0, size: 16, font: 10 },
+  expanded: { spring: 48, repulsion: 140, overlap: 0.0, size: 22, font: 12 },
 };
 const ACTIVE_PRESET = "balanced";
 
@@ -546,25 +560,50 @@ function wireTrackedHeaders() {
   });
 }
 
-function physicsOptions(totalNodes) {
-  const n = totalNodes || 0;
-  const big = n > 150;
+// Layouts dagre: estáticos, sin animación, deterministas.
+function dagreLayoutOpts() {
   return {
-    enabled: true,
-    solver: "barnesHut",
-    barnesHut: {
-      gravitationalConstant: big ? -Math.min(layout.repulsion * 0.3, 3000) : -layout.repulsion,
-      centralGravity: big ? 0.12 : (layout.centralGravity ?? 0.08),
-      springLength: big ? Math.max(100, layout.spring * 0.7) : layout.spring,
-      springConstant: big ? 0.008 : 0.015,
-      damping: big ? 0.3 : (layout.damping ?? 0.12),
-      avoidOverlap: big ? 0.6 : layout.overlap,
-    },
-    stabilization: { iterations: big ? 400 : 300, updateInterval: 25 },
-    maxVelocity: big ? 2 : 4,
-    minVelocity: 0.4,
-    timestep: big ? 0.5 : 0.35,
+    name: "dagre",
+    rankDir: "TB",
+    nodeSep: layout.spring,
+    rankSep: layout.repulsion,
+    edgeSep: Math.round(layout.overlap * 30),
+    animate: false,
+    fit: true,
+    padding: 40,
   };
+}
+
+// Posiciones persistidas por workspace (memoria espacial del analista)
+function positionsKey() {
+  const ws = $("#ws-select")?.value || "default";
+  return "akg-pos-" + ws;
+}
+function loadSavedPositions() {
+  try { return JSON.parse(localStorage.getItem(positionsKey()) || "{}"); } catch (_) { return {}; }
+}
+function savePositions() {
+  if (!cy) return;
+  const pos = {};
+  cy.nodes().forEach((n) => { pos[n.id()] = { ...n.position() }; });
+  try { localStorage.setItem(positionsKey(), JSON.stringify(pos)); } catch (_) {}
+}
+function clearSavedPositions() {
+  try { localStorage.removeItem(positionsKey()); } catch (_) {}
+}
+
+function runLayout(useSaved = true) {
+  if (!cy) return;
+  const saved = useSaved ? loadSavedPositions() : {};
+  const total = cy.nodes().length;
+  const present = {};
+  cy.nodes().forEach((n) => { if (saved[n.id()]) present[n.id()] = saved[n.id()]; });
+  // solo reutiliza posiciones si cubren (casi) todos los nodos actuales
+  if (total > 0 && Object.keys(present).length / total >= 0.8) {
+    cy.layout({ name: "preset", positions: present, fit: true, padding: 40, animate: false }).run();
+  } else {
+    cy.layout(dagreLayoutOpts()).run();
+  }
 }
 
 function nodeKey(nd) {
@@ -605,11 +644,6 @@ function nodeLabel(nd) {
   return label.slice(0, 48);
 }
 
-const AUTH_SIGNAL_COLORS = {
-  token: { background: "#4f8cff", border: "#1c5cb8" },
-  cookie: { background: "#ffc857", border: "#b8871c" },
-};
-
 async function highlightAuthEndpoints(nodes) {
   try {
     const ws = $("#ws-select").value;
@@ -617,20 +651,23 @@ async function highlightAuthEndpoints(nodes) {
     const { ok, body } = await api(path);
     if (!ok || !body?.endpoints) return;
     const signalBy = new Map(body.endpoints.map((e) => [`${e.method}|${e.pattern}|${e.host || ""}`, e.signal]));
-    const updates = [];
     nodes.forEach((n) => {
       const p = n.props || {};
       if (!p.method || !p.pattern) return;
       const signal = signalBy.get(`${p.method}|${p.pattern}|${p.host || ""}`);
       if (signal === "token" || signal === "cookie") {
-        n.color = AUTH_SIGNAL_COLORS[signal];
         n._auth = signal;
-        updates.push({ id: n.id, color: n.color });
+        n.ring = AUTH_RING[signal];
       }
     });
-    if (updates.length && network) {
-      const present = network.body.data.nodes.get({ returnType: "Object" });
-      network.body.data.nodes.update(updates.filter((u) => present[u.id]));
+    if (cy) {
+      cy.batch(() => {
+        nodes.forEach((n) => {
+          if (!n.ring) return;
+          const el = cy.getElementById(n.id);
+          if (el.nonempty()) el.data("ring", n.ring);
+        });
+      });
     }
   } catch (_) { /* sin marcado */ }
 }
@@ -718,8 +755,93 @@ function wireLegend() {
   buildLegend();
 }
 
+function nodeSizeFor(total) {
+  if (total > 500) return Math.max(5, layout.size * 0.5);
+  if (total > 200) return Math.max(7, layout.size * 0.7);
+  return layout.size;
+}
+
+function buildCyStyle(fontSize) {
+  return [
+    {
+      selector: "node",
+      style: {
+        shape: "data(shape)",
+        "background-color": "data(color)",
+        "border-width": 1,
+        "border-color": "data(border)",
+        width: "data(size)",
+        height: "data(size)",
+        label: "data(label)",
+        "font-family": "ui-monospace, SF Mono, Menlo, Consolas, monospace",
+        "font-size": fontSize,
+        color: LABEL_COLOR,
+        "text-valign": "bottom",
+        "text-halign": "center",
+        "text-margin-y": 4,
+        "text-max-width": "110px",
+        "text-wrap": "ellipsis",
+        "text-background-color": "#0d1117",
+        "text-background-opacity": 0.7,
+        "text-background-padding": 2,
+      },
+    },
+    {
+      // endpoints con señal de auth: anillo de color, el relleno no cambia
+      selector: "node[?ring]",
+      style: {
+        "border-width": 2.5,
+        "border-color": "data(ring)",
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        width: 1,
+        "line-color": "data(color)",
+        "target-arrow-color": "data(color)",
+        "target-arrow-shape": "triangle",
+        "arrow-scale": 0.8,
+        "curve-style": "bezier",
+        label: "",
+        opacity: 0.6,
+      },
+    },
+    // etiqueta de arista solo al pasar el ratón o al seleccionarla
+    {
+      selector: "edge:selected, edge.hover",
+      style: {
+        label: "data(label)",
+        "font-family": "ui-monospace, SF Mono, Menlo, Consolas, monospace",
+        "font-size": 9,
+        color: "#c9d1d9",
+        "text-rotation": "autorotate",
+        "text-background-color": "#0d1117",
+        "text-background-opacity": 0.85,
+        "text-background-padding": 2,
+        opacity: 1,
+      },
+    },
+    {
+      selector: "node:selected",
+      style: {
+        "border-width": 2,
+        "border-color": ACCENT,
+      },
+    },
+    {
+      selector: ".dimmed",
+      style: { opacity: 0.22, "text-opacity": 0.15 },
+    },
+    {
+      selector: "edge.dimmed",
+      style: { opacity: 0.08 },
+    },
+  ];
+}
+
 function renderGraph(nodes, edges, cypherType) {
-  if (network) { network.destroy(); network = null; }
+  if (cy) { cy.destroy(); cy = null; }
   isolatedNodeId = null;
   originalGraphData = null;
   graphEl.innerHTML = "";
@@ -739,177 +861,166 @@ function renderGraph(nodes, edges, cypherType) {
   const isLargeGraph = total > 200;
   const isHuge = total > 500;
 
-  // reduccion de labels para grafos grandes
-  if (isLargeGraph) {
-    const showEvery = isHuge ? Math.max(1, Math.floor(total / 80)) : Math.max(1, Math.floor(total / 40));
-    let idx = 0;
-    blockedFiltered.forEach((n) => {
-      n.label = (idx++ % showEvery === 0) ? n.label : "";
+  // reducción de labels para grafos grandes: solo una fracción
+  const showEvery = isHuge ? Math.max(1, Math.floor(total / 60)) : (isLargeGraph ? Math.max(1, Math.floor(total / 30)) : 1);
+
+  const size = nodeSizeFor(total);
+  const fontSize = isLargeGraph ? Math.max(8, layout.font * 0.8) : layout.font;
+
+  const elements = [];
+  blockedFiltered.forEach((n, i) => {
+    const kind = n.group || nodeType(n);
+    const c = NODE_COLORS[kind] || { bg: DEFAULT_BG, border: BORDER_SOFT };
+    elements.push({
+      group: "nodes",
+      data: {
+        id: n.id,
+        label: (i % showEvery === 0) ? (n.label || "") : "",
+        shape: NODE_SHAPES[kind] || "ellipse",
+        color: c.bg,
+        border: c.border,
+        ring: n.ring || null,
+        size: size,
+      },
     });
-  }
-
-  const data = { nodes: new vis.DataSet(blockedFiltered), edges: new vis.DataSet(filteredEdges) };
-
-  const groups = {};
-  Object.entries(NODE_COLORS).forEach(([kind, c]) => {
-    groups[kind] = {
-      shape: isHuge ? "dot" : (NODE_SHAPES[kind] || "dot"),
-      color: { background: c.bg, border: c.border, highlight: { background: c.bg, border: "#fff" } },
-      borderWidth: isLargeGraph ? 0.6 : 1.5,
-      size: isLargeGraph ? Math.max(6, layout.size * 0.55) : layout.size,
-      font: { size: isLargeGraph ? Math.max(8, layout.font * 0.7) : layout.font, color: "#e0e4f0",
-        face: "ui-sans-serif,system-ui", strokeWidth: isLargeGraph ? 1 : 2, strokeColor: "#0f1117" },
-    };
+  });
+  filteredEdges.forEach((e, i) => {
+    elements.push({
+      group: "edges",
+      data: {
+        id: "e" + i,
+        source: e.from,
+        target: e.to,
+        label: e.label || "",
+        color: (e.color && e.color.color) || BORDER_SOFT,
+      },
+    });
   });
 
-  const baseSize = isHuge ? 6 : (isLargeGraph ? 9 : layout.size);
-
-  const opts = {
-    nodes: {
-      shape: "dot",
-      size: baseSize,
-      scaling: { min: isHuge ? 4 : (isLargeGraph ? 6 : 10), max: isLargeGraph ? 28 : 38,
-        label: { enabled: true, min: isLargeGraph ? 7 : 10, max: 13, drawThreshold: isLargeGraph ? 8 : 3 } },
-      font: { size: isLargeGraph ? Math.max(8, layout.font * 0.7) : layout.font, color: "#e0e4f0",
-        face: "ui-sans-serif,system-ui", strokeWidth: isLargeGraph ? 1 : 2, strokeColor: "#0f1117" },
-      borderWidth: isLargeGraph ? 0.6 : 1.5,
-      borderWidthSelected: 3,
-      color: { background: DEFAULT_BG, border: "#555", highlight: { background: DEFAULT_BG, border: "#fff" } },
-      shadow: { enabled: !isLargeGraph, color: "rgba(0,0,0,0.3)", size: 6, x: 2, y: 2 },
-      mass: isHuge ? 0.3 : (isLargeGraph ? 0.6 : 1),
-    },
-    edges: {
-      arrows: { to: { enabled: !isLargeGraph, scaleFactor: 0.7 } },
-      smooth: isHuge ? false : (isLargeGraph ? { type: "continuous" } : { type: "curvedCW", roundness: 0.2 }),
-      width: isHuge ? 0.4 : (isLargeGraph ? 0.6 : 1.5),
-      widthConstraint: { maximum: isLargeGraph ? 1.5 : 3 },
-      font: { size: 7, align: "middle", color: "#666", strokeWidth: 0 },
-      color: { color: isHuge ? "#2a2a3a" : (isLargeGraph ? "#3a3a4a" : "#555"), highlight: "#8fdb6e", hover: "#8fdb6e" },
-      hoverWidth: 0,
-      selectionWidth: 0,
-    },
-    groups: groups,
-    interaction: {
-      hover: !isLargeGraph,
-      hoverConnectedEdges: false,
-      tooltipDelay: 100,
-      navigationButtons: true,
-      keyboard: { enabled: true, speed: { x: 10, y: 10, zoom: 0.02 } },
-      zoomView: true,
-      dragView: true,
-      hideEdgesOnDrag: isLargeGraph,
-      hideEdgesOnZoom: isLargeGraph,
-    },
-    layout: {
-      improvedLayout: true,
-      randomSeed: 1,
-    },
-    physics: physicsOptions(total),
-    configure: { enabled: false },
-  };
-
-  network = new vis.Network(graphEl, data, opts);
-  window.__network = network;
-
-  if (isLargeGraph) {
-    network.on("stabilized", () => {
-      network.setOptions({ physics: { solver: "barnesHut", barnesHut: {
-        gravitationalConstant: -800, centralGravity: 0.06, springLength: 160,
-        springConstant: 0.005, damping: 0.35, avoidOverlap: 0.8 } },
-        maxVelocity: 1.5, minVelocity: 0.3 });
-      setTimeout(() => {
-        if (network) {
-          network.storePositions();
-          network.setOptions({ physics: { enabled: false } });
-        }
-      }, 2500);
-    });
-  } else {
-    network.on("stabilizationIterationsDone", () => {
-      network.setOptions({ physics: { solver: "barnesHut", barnesHut: {
-        gravitationalConstant: physicsOptions().barnesHut.gravitationalConstant * 0.4,
-        centralGravity: physicsOptions().barnesHut.centralGravity,
-        springLength: physicsOptions().barnesHut.springLength * 1.1,
-        springConstant: 0.008,
-        damping: 0.12,
-        avoidOverlap: physicsOptions().barnesHut.avoidOverlap,
-      } }, maxVelocity: 2, minVelocity: 0.2 });
-    });
-  }
-
-  network.on("click", (params) => {
-    const { nodes: clicked } = params;
-    if (clicked && clicked.length) showDetail(nodesById.get(clicked[0]));
-    else closeDetail();
+  cy = cytoscape({
+    container: graphEl,
+    elements,
+    style: buildCyStyle(fontSize),
+    wheelSensitivity: 0.2,
+    minZoom: 0.05,
+    maxZoom: 3,
   });
+  window.__cy = cy;
 
+  runLayout(true);
+
+  // persistir posiciones al soltar un nodo (memoria espacial)
+  cy.on("dragfree", "node", () => savePositions());
+  cy.on("layoutstop", () => savePositions());
+
+  cy.on("tap", "node", (e) => {
+    const node = nodesById.get(e.target.id());
+    if (node) showDetail(node);
+  });
+  cy.on("tap", (e) => { if (e.target === cy) { clearFocus(); closeDetail(); closeCtxMenu(); } });
+  cy.on("cxttap", "node", (e) => {
+    e.originalEvent.preventDefault();
+    showCtxMenu(e.target.id(), e.originalEvent.clientX, e.originalEvent.clientY);
+  });
+  cy.on("cxttap", (e) => { if (e.target === cy) closeCtxMenu(); });
+
+  // foco al pasar el ratón: ilumina vecinos, atenúa el resto
   if (!isLargeGraph) {
-    network.on("hoverNode", (params) => focusOnNode(params.node));
-    network.on("blurNode", () => clearFocus());
+    cy.on("mouseover", "node", (e) => focusOnNode(e.target.id()));
+    cy.on("mouseout", "node", () => clearFocus());
+    cy.on("mouseover", "edge", (e) => e.target.addClass("hover"));
+    cy.on("mouseout", "edge", (e) => e.target.removeClass("hover"));
   }
 
   lastGraph = { allNodes: nodes, allEdges: edges, cypherType };
-  log(`grafo: ${blockedFiltered.length} nodos * ${filteredEdges.length} relaciones (${cypherType || "?"})${isLargeGraph ? " · optimizado" : ""}`, "ok");
+  log(`grafo: ${blockedFiltered.length} nodos · ${filteredEdges.length} relaciones (${cypherType || "?"})${isLargeGraph ? " · optimizado" : ""}`, "ok");
   updateFilterCounts(nodes);
   renderBlockPickList();
-  if (network) log(`zoom+/scroll para navegar, F para encuadrar`, "");
 }
 
-// ── Foco al pasar el mouse: ilumina conexiones directas y atenúa el resto ──
-let focusTimer = null;
-
+// ── Foco: ilumina vecindad directa y atenúa el resto ────────────────────
 function focusOnNode(nodeId) {
-  if (!network) return;
-  clearTimeout(focusTimer);
-  const nodeDS = network.body.data.nodes;
-  const edgeDS = network.body.data.edges;
-  const connected = new Set([nodeId]);
-  const connectedEdges = new Set();
-
-  edgeDS.get().forEach((e) => {
-    const isConn = e.from === nodeId || e.to === nodeId;
-    if (isConn) {
-      connected.add(e.from);
-      connected.add(e.to);
-      connectedEdges.add(e.id);
-    }
+  if (!cy) return;
+  const node = cy.getElementById(nodeId);
+  if (node.empty()) return;
+  cy.batch(() => {
+    const neighborhood = node.closedNeighborhood();
+    cy.elements().addClass("dimmed");
+    neighborhood.removeClass("dimmed");
   });
-
-  const nodeUpdates = nodeDS.get().map((n) => ({
-    id: n.id,
-    opacity: connected.has(n.id) ? 1 : 0.12,
-    borderWidth: n.id === nodeId ? 3 : (connected.has(n.id) ? 2 : 0.5),
-  }));
-
-  const edgeUpdates = edgeDS.get().map((e) => ({
-    id: e.id,
-    opacity: connectedEdges.has(e.id) ? 1 : 0.04,
-    width: connectedEdges.has(e.id) ? 2.5 : 0.5,
-  }));
-
-  nodeDS.update(nodeUpdates);
-  edgeDS.update(edgeUpdates);
 }
 
 function clearFocus() {
-  if (!network) return;
-  focusTimer = setTimeout(() => {
-    const nodeDS = network.body.data.nodes;
-    const edgeDS = network.body.data.edges;
-    nodeDS.get().forEach((n) => nodeDS.update({ id: n.id, opacity: 1, borderWidth: 1.5 }));
-    edgeDS.get().forEach((e) => edgeDS.update({ id: e.id, opacity: 1, width: 1.5 }));
-  }, 60);
+  if (!cy) return;
+  cy.batch(() => cy.elements().removeClass("dimmed"));
+}
+
+// ── Menú contextual de nodo (click derecho) ─────────────────────────────
+let ctxMenuEl = null;
+
+function closeCtxMenu() {
+  if (ctxMenuEl) { ctxMenuEl.remove(); ctxMenuEl = null; }
+}
+
+function showCtxMenu(nodeId, x, y) {
+  closeCtxMenu();
+  const node = nodesById.get(nodeId);
+  if (!node) return;
+
+  const menu = document.createElement("div");
+  menu.className = "ctx-menu";
+
+  const kind = document.createElement("div");
+  kind.className = "ctx-kind";
+  kind.textContent = (node.group || nodeType(node) || "nodo").toLowerCase();
+  menu.appendChild(kind);
+
+  const addItem = (label, fn, danger) => {
+    const b = document.createElement("button");
+    b.className = "ctx-item" + (danger ? " danger" : "");
+    b.textContent = label;
+    b.onclick = () => { closeCtxMenu(); fn(); };
+    menu.appendChild(b);
+  };
+
+  addItem("Ver detalle", () => showDetail(node));
+  if (isolatedNodeId) {
+    addItem("Reintegrar grafo completo", restoreFullGraph);
+  } else {
+    addItem("Aislar vecindad", () => isolateNodeGraph(nodeId));
+  }
+
+  const props = node.props || {};
+  const isHost = !!(props.host || props.name) && !props.method;
+  const isEndpoint = !!(props.method && (props.pattern || props.path));
+  if (isHost || isEndpoint) {
+    const sep = document.createElement("div");
+    sep.className = "ctx-sep";
+    menu.appendChild(sep);
+    const value = isEndpoint
+      ? `${props.method} ${props.pattern || props.path}`
+      : String(props.host || props.name).replace(/^https?:\/\//, "").replace(/\/$/, "");
+    addItem(`Ocultar (${isHost ? "host" : "endpoint"})`, () => addBlock(value), true);
+  }
+
+  document.body.appendChild(menu);
+  ctxMenuEl = menu;
+  // clamp dentro de la ventana
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = Math.min(x, window.innerWidth - rect.width - 8) + "px";
+  menu.style.top = Math.min(y, window.innerHeight - rect.height - 8) + "px";
 }
 
 // ultimo grafo renderizado para re-render al cambiar el layout
 let lastGraph = null;
 let layoutTimer = null;
 
-function rerenderLayout() {
+function rerenderLayout(relayout = false) {
   saveLayout();
   if (!lastGraph) return;
   clearTimeout(layoutTimer);
   layoutTimer = setTimeout(() => {
+    if (relayout) clearSavedPositions();
     renderGraph(lastGraph.allNodes, lastGraph.allEdges, lastGraph.cypherType);
   }, 120);
 }
@@ -959,7 +1070,7 @@ let originalGraphData = null;
 function renderIsolateActions(node) {
   const old = document.getElementById("isolate-actions");
   if (old) old.remove();
-  if (!node || !network) return;
+  if (!node || !cy) return;
 
   const actions = document.createElement("div");
   actions.id = "isolate-actions";
@@ -976,8 +1087,6 @@ function renderIsolateActions(node) {
     const isolateBtn = document.createElement("button");
     isolateBtn.className = "req-btn";
     isolateBtn.style.flex = "1";
-    isolateBtn.style.background = "rgba(143,219,110,0.14)";
-    isolateBtn.style.color = "#b7f28f";
     isolateBtn.textContent = "Aislar grafo";
     isolateBtn.onclick = () => isolateNodeGraph(node.id);
     actions.appendChild(isolateBtn);
@@ -987,52 +1096,35 @@ function renderIsolateActions(node) {
 }
 
 function isolateNodeGraph(nodeId) {
-  if (!network) return;
-  originalGraphData = {
-    nodes: network.body.data.nodes.get(),
-    edges: network.body.data.edges.get(),
-  };
+  if (!cy) return;
+  originalGraphData = cy.elements().jsons();
   isolatedNodeId = nodeId;
 
-  const connectedNodes = new Set([nodeId]);
-  const connectedEdges = new Set();
-  network.body.data.edges.get().forEach((e) => {
-    if (e.from === nodeId || e.to === nodeId) {
-      connectedNodes.add(e.from);
-      connectedNodes.add(e.to);
-      connectedEdges.add(e.id);
-    }
-  });
+  const node = cy.getElementById(nodeId);
+  if (node.empty()) return;
+  const neighborhood = node.closedNeighborhood();
+  const keep = neighborhood.jsons();
 
-  const nds = network.body.data.nodes.get({ filter: (n) => connectedNodes.has(n.id) });
-  const eds = network.body.data.edges.get({ filter: (e) => connectedEdges.has(e.id) });
-
-  network.setData({ nodes: new vis.DataSet(nds), edges: new vis.DataSet(eds) });
-  network.setOptions({ physics: { solver: "barnesHut", barnesHut: {
-    gravitationalConstant: -12000, centralGravity: 0.1, springLength: 250,
-    springConstant: 0.02, damping: 0.1, avoidOverlap: 0.5,
-  }, stabilization: { iterations: 180 }, maxVelocity: 4, minVelocity: 0.3 } });
+  cy.elements().remove();
+  cy.add(keep);
+  cy.layout({ name: "dagre", rankDir: "TB", nodeSep: 48, rankSep: 120, animate: false, fit: true, padding: 60 }).run();
 
   const detailNode = document.getElementById("detail");
   if (detailNode) renderIsolateActions(nodesById.get(nodeId));
-  log("vista aislada: " + nds.length + " nodos  " + eds.length + " relaciones", "ok");
-  setTimeout(() => network.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } }), 300);
+  log(`vista aislada: ${cy.nodes().length} nodos · ${cy.edges().length} relaciones`, "ok");
 }
 
 function restoreFullGraph() {
-  if (!network || !originalGraphData) return;
+  if (!cy || !originalGraphData) return;
   isolatedNodeId = null;
 
-  network.setData({
-    nodes: new vis.DataSet(originalGraphData.nodes),
-    edges: new vis.DataSet(originalGraphData.edges),
-  });
+  cy.elements().remove();
+  cy.add(originalGraphData);
+  runLayout(true);
 
-  network.setOptions({ physics: physicsOptions(originalGraphData.nodes.length) });
   const old = document.getElementById("isolate-actions");
   if (old) old.remove();
-  setTimeout(() => network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } }), 400);
-  log(" grafo completo restaurado", "ok");
+  log("grafo completo restaurado", "ok");
 }
 
 async function loadSampleRequest(props, btn) {
@@ -1526,7 +1618,7 @@ async function runQuery() {
         to: toId,
         label: type.slice(0, 10) + (conf ? ` · ${conf.slice(0, 3)}` : ""),
         arrows: "to",
-        color: { color: CONF_COLORS[conf] || "#888", highlight: "#8fdb6e" },
+        color: { color: CONF_COLORS[conf] || "#30363d" },
       });
     }
   });
@@ -1604,6 +1696,7 @@ function syncLayoutControls() {
 }
 
 function setPreset(name) {
+  clearSavedPositions();
   activePreset = name;
   layout = { ...LAYOUT_PRESETS[name] };
   syncLayoutControls();
@@ -1629,7 +1722,7 @@ Object.entries(LAYOUT_SLIDERS).forEach(([key, cfg]) => {
     activePreset = "custom";
     document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
     saveLayout();
-    rerenderLayout();
+    rerenderLayout(true);
   });
 });
 
@@ -1638,7 +1731,7 @@ $("#layout-reset").onclick = () => {
 };
 
 $("#btn-fit").onclick = () => {
-  if (network) network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+  if (cy) cy.fit(null, 40);
 };
 
 function buildNodeTypeFilters() {
@@ -1710,14 +1803,31 @@ wireBlocklist();
 wireTrackedHeaders();
 
 document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    const inp = $("#node-label");
+    if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
   if (e.key === "f" || e.key === "F") {
     e.preventDefault();
-    if (network) network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
+    if (cy) cy.fit(null, 40);
+  }
+  if (e.key === "r" || e.key === "R") {
+    e.preventDefault();
+    clearSavedPositions();
+    rerenderLayout(true);
+    log("re-layout (dagre) ejecutado", "");
   }
   if (e.key === "Escape") {
+    closeCtxMenu();
     closeDetail();
   }
+});
+
+document.addEventListener("click", (e) => {
+  if (ctxMenuEl && !e.target.closest(".ctx-menu")) closeCtxMenu();
 });
 
 (function initSidebarResize() {
